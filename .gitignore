@@ -1,7 +1,15 @@
 node_modules/
 *.log
 .DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
 .debug/
 
 # Only ever left behind by a failed build.
 lib/client.failed.js
+
+# The harnesses give every Chromium run its own profile under the OS temp
+# directory, so nothing they do should reach the tree. If a run is killed before
+# it cleans up, the leftovers land in %TEMP%\dsh-*, not here.

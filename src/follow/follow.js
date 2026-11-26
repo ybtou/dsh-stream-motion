@@ -24,6 +24,8 @@ import {
   ROW_PHASE_ATTRIBUTE,
   RUNNING_STATE,
   SHIMMER_SELECTOR,
+  SLIDE_BURST_MAX_MS,
+  SLIDE_BURST_MS_PER_ROOT_PX,
   SLIDE_MS,
   STREAMING_SELECTOR,
   TAIL_ATTR,
@@ -169,8 +171,8 @@ export function createFollowGuard(options) {
   let slideReaderRevision = 0
   /** Whether the current conversation column has ever stood at or followed the tail. */
   let seenAtTail = false
-  /** The slide running now. */
-  let slide = null
+  /** The additive slides running now, each carrying one growth's distance back to zero. */
+  const runs = []
   /** The column the hold mark is on, or null while no door holds it. */
   let heldColumn = null
   /** Whether the size subscription's first report for the current column has been taken as its baseline. */
@@ -230,12 +232,14 @@ export function createFollowGuard(options) {
     return column.closest(FOLLOWING_TAIL_SELECTOR) !== null
   }
 
-  /** End the running slide where it is: the column and its counter-slid elements land at rest together. */
+  /** End every running slide where it is: the column and its counter-slid elements land at rest together. */
   const stopSlide = () => {
-    if (slide === null) return
-    slide.column.cancel()
-    for (const counter of slide.counters) counter.cancel()
-    slide = null
+    if (runs.length === 0) return
+    for (const run of runs) {
+      run.column.cancel()
+      for (const counter of run.counters) counter.cancel()
+    }
+    runs.length = 0
   }
 
   /** Whether the conversation scroller currently stands at or follows its tail. */
@@ -247,36 +251,53 @@ export function createFollowGuard(options) {
     }
   }
 
-  /** The distance the running slide still carries, off its own clock and curve: no style is read. */
+  /**
+   * The distance the running slides still carry, summed off each one's own clock
+   * and curve: no style is read, and the total only ever shrinks because each
+   * run's share does.
+   */
   const slideCarried = () => {
-    if (slide === null) return 0
-    const startedAt = slide.column.startTime
+    let carried = 0
+    for (const run of runs) carried += runCarried(run)
+    return carried
+  }
+
+  /** One run's remaining distance. */
+  const runCarried = (run) => {
+    const startedAt = run.column.startTime
     // An animation that has not begun — the frame it was made in has not
-    // painted — still carries the whole distance; reading it as nothing would
-    // drop that distance on the next restart.
-    if (startedAt === null) return slide.from
-    const linear = (Number(document.timeline.currentTime) - Number(startedAt)) / slide.duration
-    if (!(linear > 0)) return slide.from
+    // painted — still carries the whole distance.
+    if (startedAt === null) return run.from
+    const linear = (Number(document.timeline.currentTime) - Number(startedAt)) / run.duration
+    if (!(linear > 0)) return run.from
     if (linear >= 1) return 0
     // The curve the animation paints with, not the linear share of its duration:
     // with the two mixed up, every restart re-inflates the distance the frame
     // before it had already travelled.
-    return slide.from * (1 - easeValueAt(GLIDE_EASE, linear))
+    return run.from * (1 - easeValueAt(GLIDE_EASE, linear))
   }
 
   /**
-   * How long this slide may run. A piece of an answer arriving at a provider's
-   * pace lands well inside the slide token, and a slide still moving when the
-   * next piece lands starts its restart from a distance it had not paid back
-   * yet: the column is drawn further below the tail with every piece until it
-   * stands at the longest stretch a slide carries. The gap the last two pieces
-   * kept is the time this one has before the next, so the slide is timed to
-   * that; the token stays the ceiling for an answer slow enough for the glide to
-   * settle between pieces.
+   * How long this slide may run.
+   *
+   * A piece of an answer arriving at a provider's pace lands well inside the
+   * slide token, and a slide still moving when the next piece lands adds to a
+   * distance it had not paid back yet: the column is drawn further below the tail
+   * with every piece until it stands at the longest stretch a slide carries. The
+   * gap the last two pieces kept is the time this one has before the next, so the
+   * slide is timed to that; the token stays the ceiling for an answer slow enough
+   * for the glide to settle between pieces.
+   *
+   * A burst is the other case: one commit hands the view a screenful at once, and
+   * a fixed token would cross it in a few frames. The distance sets the time
+   * instead, on the square root of it — the reader's sense of speed is not linear
+   * in pixels — inside a band that keeps a short trip quick and a long one short
+   * enough to still read as motion.
    */
-  const slideDuration = () => {
-    if (grewEvery === 0) return SLIDE_MS
-    return Math.min(SLIDE_MS, Math.max(grewEvery, 1))
+  const slideDuration = (from) => {
+    const paced = grewEvery === 0 ? SLIDE_MS : Math.min(SLIDE_MS, Math.max(grewEvery, 1))
+    const travelled = Math.max(120, Math.min(SLIDE_BURST_MAX_MS, Math.sqrt(from) * SLIDE_BURST_MS_PER_ROOT_PX))
+    return Math.max(paced, travelled)
   }
 
   /** Expanded thinking headers currently stuck against the outer scroller's top edge. */
@@ -309,23 +330,34 @@ export function createFollowGuard(options) {
   /**
    * Put the column back down by this frame's growth and slide it to rest.
    *
-   * One replace-mode animation at a time: an additive one stays off the
-   * compositor, so a new growth restarts from the distance still carried — up to
-   * the longest stretch a slide carries, so a burst is glided as far as that and
-   * no farther. Its length follows the pace the pieces arrive at, so the distance
-   * carried never outgrows one piece. The live turn's row is pinned to the
-   * scroller's bottom and would ride the column's offset, so it gets the same
-   * slide reversed, started in the same frame: the two cancel and it stands.
+   * Each growth gets its own additive animation running from its own distance to
+   * zero, so the offsets simply sum: the total only ever shrinks, and a piece
+   * arriving mid-slide adds to a number that is already draining instead of
+   * replacing it. A replace-mode animation cannot do this — restarting one snaps
+   * the painted offset back to the value computed for the restart, which is a
+   * jump of whatever the previous frame had already paid back.
+   *
+   * The lead is a ceiling on the summed distance, not on one piece, so a burst is
+   * glided as far as the ceiling and no farther. The live turn's row is pinned to
+   * the scroller's bottom and would ride the column's offset, so it gets the same
+   * distances negated, started in the same frame: the two cancel and it stands.
    */
   const startSlide = (column, scroller, grew) => {
-    const from = Math.min(SCROLL_EASE_LEAD_PX, slideCarried() + grew)
-    stopSlide()
+    const carried = slideCarried()
+    // The lead bounds how far the view may be rewound: a commit bigger than that
+    // is a whole screenful arriving at once, and pulling it all back would be a
+    // bigger move than the jump it replaces. The excess lands where the host put
+    // it — still upward, still monotonic — and the lead is glided.
+    const room = SCROLL_EASE_LEAD_PX - carried
+    if (room <= 0.5) return
+    const from = Math.min(room, grew)
+    if (from <= 0) return
     const countersToAnimate = []
     const pinned = runningRows.all().find((row) => column.contains(row)) ?? null
     if (pinned !== null) countersToAnimate.push(pinned)
     for (const header of stuckThinkHeaders(column, scroller)) countersToAnimate.push(header)
-    const duration = slideDuration()
-    const timing = { duration, easing: GLIDE_EASE }
+    const duration = slideDuration(from)
+    const timing = { duration, easing: GLIDE_EASE, composite: 'add' }
     const columnSlide = column.animate(
       [{ transform: `translateY(${from}px)` }, { transform: 'translateY(0px)' }],
       timing,
@@ -334,9 +366,10 @@ export function createFollowGuard(options) {
     const counters = countersToAnimate.map((element) => element.animate(counterFrames, timing))
     const current = { column: columnSlide, counters, from, duration }
     columnSlide.onfinish = () => {
-      if (slide === current) slide = null
+      const index = runs.indexOf(current)
+      if (index >= 0) runs.splice(index, 1)
     }
-    slide = current
+    runs.push(current)
   }
 
   /** Take the hold mark off the column carrying it. */
@@ -414,6 +447,43 @@ export function createFollowGuard(options) {
   }
 
   /**
+   * Read the position and, if the host has just pinned growth under the fold,
+   * start the slide in this same frame so the two movements paint as one.
+   *
+   * The baseline is refreshed on every call, which is what keeps a pin from
+   * being slid twice: once the pin has been seen, the next call reads the same
+   * position and finds nothing to carry.
+   *
+   * It must run after the host's own write, which is why it is called from the
+   * size batch and from the scroller's scroll event, never from an animation
+   * frame: a frame callback runs before layout, and the host's pin lands after
+   * it, so a sampler on the frame clock would always be one frame late — and a
+   * slide one frame late is exactly the bounce, because the growth has painted
+   * by then.
+   */
+  const consumePin = () => {
+    const column = slideColumn
+    if (column === null) return
+    const scroller = column.closest(CONVERSATION_SCROLL_SELECTOR)
+    if (scroller === null) return
+    const scrollTop = scroller.scrollTop
+    const previous = slideScrollTop
+    const revision = readerScrollRevision(scroller)
+    const readerMoved = revision !== slideReaderRevision
+    slideScrollTop = scrollTop
+    slideReaderRevision = revision
+    if (previous === null || readerMoved) return
+    const pinned = scrollTop - previous
+    if (pinned < 0) {
+      stopSlide()
+      return
+    }
+    if (pinned === 0) return
+    if (!slideWanted(column)) return
+    startSlide(column, scroller, pinned)
+  }
+
+  /**
    * Put this frame's growth back under a reader who holds the conversation.
    *
    * The host's own follow pins the end on every growth while its mark stands,
@@ -480,28 +550,16 @@ export function createFollowGuard(options) {
     }
     const scroller = column === null ? null : column.closest(CONVERSATION_SCROLL_SELECTOR)
     noteTailIfNear(scroller)
-    const scrollTop = scroller === null ? null : scroller.scrollTop
-    const previousScrollTop = slideScrollTop
-    const revision = scroller === null ? 0 : readerScrollRevision(scroller)
-    const readerMoved = revision !== slideReaderRevision
-    // Sibling rows can change the pin by less or more than the column grew.
-    // Compensate the host's actual position write, not only the column's delta.
-    const moved = slideScrollTop === null || scrollTop === null ? 0 : scrollTop - slideScrollTop
-    slideScrollTop = scrollTop
-    slideReaderRevision = revision
     holdCheck()
+    // The host pins the end from its own observer, in this same batch and before
+    // this callback (the subscription is rebuilt `afterHost`). Reading the
+    // position here is therefore the first moment the pin is visible, and the
+    // slide starts before the growth paints.
+    consumePin()
     if (column === null || grew === 0) return
-    if (readerAway()) {
-      holdGrowth(column, previousScrollTop, readerMoved)
-      if (scroller !== null) {
-        slideScrollTop = scroller.scrollTop
-        slideReaderRevision = readerScrollRevision(scroller)
-      }
-      return
-    }
-    if (!slideWanted(column)) return
-    if (moved < 0) stopSlide()
-    if (moved > 0) startSlide(column, scroller, moved)
+    // A reader holding the conversation still gets the growth put back, off the
+    // baseline the pin reading just recorded.
+    if (readerAway()) holdGrowth(column, slideScrollTop, false)
   }
 
   /**
@@ -646,7 +704,27 @@ export function createFollowGuard(options) {
     attributeOldValue: true,
   }, onRecords)
 
+  /**
+   * The host writes the end from its own scheduler, and the write can land
+   * outside the size batch this feature reads growth in — a scroll handler or an
+   * animation frame, not the observer that measured the growth. A scroll event is
+   * dispatched in the rendering steps before paint, so consuming the pin here
+   * still puts the offset on the column in the frame the write is painted.
+   */
+  const onScrollerScroll = (event) => {
+    if (stopped) return
+    const column = slideColumn
+    if (column === null) return
+    const scroller = column.closest(CONVERSATION_SCROLL_SELECTOR)
+    // The scroller is the column's ancestor, not its descendant: a containment
+    // test in the other direction would reject the very write it watches for.
+    if (scroller === null || event.target !== scroller) return
+    consumePin()
+  }
+  document.addEventListener('scroll', onScrollerScroll, { capture: true, passive: true })
+
   return () => {
+    document.removeEventListener('scroll', onScrollerScroll, true)
     // First: a queued pass or a waiting retry would otherwise hand the position
     // back after the feature is off, pressing the host's own back-to-end button.
     stopped = true

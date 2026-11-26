@@ -45,8 +45,24 @@ export const STYLE_ID = 'dsh-stream-motion-style'
 export const SCROLL_EASE_LEAD_PX = 1200
 /** The stream slide's own length; the pace pieces arrive at can shorten it, never lengthen it. */
 export const SLIDE_MS = 240
+/** A burst sets its own time off the distance: sqrt(px) × this, inside the band. */
+export const SLIDE_BURST_MS_PER_ROOT_PX = 12
+export const SLIDE_BURST_MAX_MS = 620
 /** The curve the stream's slide travels on, and the one `slideCarried` evaluates. */
 export const GLIDE_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+
+/** A door's own length: how long a tool or thinking row takes to roll shut or open. */
+export const FOLD_ROLL_MS = 220
+/** The share of a roll spent on the part of the box that is on screen. */
+export const FOLD_VISIBLE_SHARE = 0.9
+/** How long an opening press waits for the host to insert the body it opens. */
+export const FOLD_INTENT_TTL_MS = 500
+/** A menu or dialog: its opening must not move the chat flow. */
+export const FOLD_POPUP_SELECTOR = '[aria-haspopup]'
+/** How many frames to wait for the host's collapse before dropping the pinned height. */
+export const FOLD_SHUT_CONFIRM_FRAMES = 3
+/** The margin past a roll in which the position still belongs to the animation. */
+export const FOLD_BUSY_GRACE_MS = 50
 
 /** Two hand-backs never land closer than this, so a run of tool calls cannot pin the position. */
 export const FOLLOW_MIN_INTERVAL_MS = 200

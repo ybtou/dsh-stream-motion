@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Stream motion for DeepSeek Harness: characters fade in as an answer arrives, and the chat area's follow is slid on the compositor instead of jumping.",
+  "description": "Stream motion for DeepSeek Harness: characters fade in as an answer arrives, the chat area's follow is slid on the compositor instead of jumping, and thinking and tool rows roll their height as they open and close.",
   "license": "MIT",
   "author": "ybtou",
   "engines": { "dsh": "0.2.3-alpha.2" },
@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test/reveal-probe.mjs && node test/follow-probe.mjs && node test/tail-press.mjs"
+    "test": "node test/reveal-probe.mjs && node test/follow-probe.mjs && node test/tail-press.mjs && node test/jitter-probe.mjs && node test/race-probe.mjs && node test/burst-probe.mjs && node test/collapse-probe.mjs && node test/open-probe.mjs && node test/group-probe.mjs"
   },
   "devDependencies": { "esbuild": "^0.28.2" }
 }

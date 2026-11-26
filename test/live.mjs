@@ -184,6 +184,13 @@ try {
     await new Promise((r) => setTimeout(r, 300))
     scroller.scrollTop = scroller.scrollHeight
     await frame()
+    // Scrolling the harness's own column to the end is itself a pin, and the
+    // plugin has no way to tell it from the host's. Let that slide finish, so the
+    // growth measured below starts from a still column and its distance is the
+    // pin alone.
+    for (let i = 0; i < 60 && column.getAnimations().length > 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
     const scrollBefore = scroller.scrollTop
     answer.style.height = '160px'
     scroller.scrollTop = scroller.scrollHeight
@@ -203,14 +210,18 @@ try {
   // restarted. What matters is that the newest one is the slide, which the next
   // checks read off the first animation.
   check('a growth on the real page starts the slide', (slide?.count ?? 0) >= 1, slide)
-  // The distance is what the host's pin still owes: at least this frame's write,
-  // plus whatever an earlier restart had not paid back yet, and never past the
-  // lead. A single batch reads exactly the pin; two in one frame read the sum.
+  // The distance is what the host's pin still owes: this frame's write, plus
+  // whatever an earlier restart had not paid back yet, and never past the lead.
+  // The pin is read from the scroll event's own delta while the harness reads it
+  // off the scroller afterwards, and a scroller clamps to whole pixels, so the
+  // two can differ by a couple of pixels without either being wrong.
+  const carried = Number(/translateY\((-?[\d.]+)px\)/.exec(slide?.keys?.[0] ?? '')?.[1] ?? NaN)
   check('the slide carries the host pin it cancels',
-    slide?.scrolledBy > 0 && slide?.keys?.[0] !== undefined
-      && Number(/translateY\((-?[\d.]+)px\)/.exec(slide.keys[0])?.[1] ?? NaN) >= slide.scrolledBy
-      && Number(/translateY\((-?[\d.]+)px\)/.exec(slide.keys[0])?.[1] ?? NaN) <= 1200,
-    { keys: slide?.keys, scrolledBy: slide?.scrolledBy })
+    slide?.scrolledBy > 0
+      && Number.isFinite(carried)
+      && Math.abs(carried - slide.scrolledBy) <= 8
+      && carried <= 1200,
+    { keys: slide?.keys, scrolledBy: slide?.scrolledBy, carried })
   check('the slide rides the glide curve', slide?.easing === 'cubic-bezier(0.22, 0.61, 0.36, 1)', slide?.easing)
   check('the slide is capped by the token', slide?.duration > 0 && slide?.duration <= 240, slide?.duration)
   check('the slide rests with no transform left', slide?.rest === 'none', slide?.rest)

@@ -17,6 +17,7 @@ import { mountStyle } from './stylesheet.js'
 import { createEngine } from './reveal/engine.js'
 import { stepRules } from './reveal/steps.js'
 import { installFollow } from './follow/follow.js'
+import { createFoldGlide, foldBusy } from './follow/fold-glide.js'
 import { adoptMotionReduced, submissionHolds } from './follow/scroll-owner.js'
 import { motionReduced } from './motion.js'
 
@@ -68,15 +69,16 @@ export function apply(ctx) {
     adoptMotionReduced(motionReduced)
     document.body.setAttribute(FOLLOW_ATTR, '')
     releases.push(installFollow({
-      // A fold glide is another package's business; with none installed nothing
-      // is ever gliding, and the guard reads that as "no wait".
-      foldBusy: () => false,
+      // A door's roll moves the height, and the position is the roll's business
+      // until it lands: the guard stands its own slide down while one runs.
+      foldBusy,
       // The reader's own message taking its place is read off the scroll owner:
       // a submission row arriving inside the host's sampling window stands the
       // slide down.
       submissionHeld: submissionHolds,
       motionReduced,
     }))
+    releases.push(createFoldGlide())
   }
   if (fade !== null) {
     document.body.setAttribute(REVEAL_ATTR, '')

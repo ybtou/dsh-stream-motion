@@ -2,7 +2,7 @@
 
 # dsh-stream-motion
 
-**Two things the chat does while an answer arrives: new characters fade in, and the text the host's pin pushes up is slid back into place instead of jumping.**
+**Three things the chat does while an answer arrives: new characters fade in, the text the host's pin pushes up is slid back into place instead of jumping, and a thinking or tool row rolls its height as it opens and closes instead of snapping.**
 
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.en.md)
 [![简体中文](https://img.shields.io/badge/lang-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-red.svg)](README.md)
@@ -99,6 +99,15 @@ a short trip is quick and a long one is not a wait.
 to its own end on a critically damped spring once it falls more than 40 px
 behind, which reads as a catch-up rather than the host's slow smooth scroll.
 
+**The door.** The host's thinking rows and tool rows insert or drop their body in
+one commit, with no transition between, so everything below them moves by the
+body's height in a single frame. This package puts a height animation in front of
+that change: closing is intercepted while the body is still mounted, the body is
+rolled up, and the click is replayed once it lands; opening is let through and the
+body is rolled out from the height the root had while it was shut. A box taller
+than the screen pays back the visible stretch first, or the text the reader is
+watching would be carried past them.
+
 ## How it works
 
 Nothing here parses a network stream. Every input is a mark the host already
@@ -112,6 +121,7 @@ writes, and this package marks nothing inside the chat tree:
 | `data-conversation-scroll` | the conversation scroller | the position's owner |
 | `data-chat-running` | the live turn's row | pinned to the scroller's bottom, so it needs a counter-slide |
 | `data-step-process-body` | a capped tool group's body | the box to catch up |
+| `data-disclosure-row`, `aria-expanded`, `aria-controls` | a fold control and the body it opens | a door |
 | `data-conversation-session`, `data-phase` | the conversation body and root | which session is on screen |
 
 The fade rides on `::highlight()`: the pseudo-element's property set has no
@@ -121,13 +131,24 @@ is the element the text hangs off — never "anything under the streaming block"
 because a descendant-combinator subject re-matches every element below it on
 each batch, which measures as the whole page's style recalc while a stream runs.
 
-The slide is one `Animation` on the flow column: `translateY(growth)` to
-`translateY(0)` on `cubic-bezier(0.22, 0.61, 0.36, 1)`, capped at 240 ms and
-timed to the gap the last two pieces kept — a slide still moving when the next
-piece lands would start its restart from a distance it had not paid back yet, so
-the offset would grow with every burst. An additive animation stays off the
-compositor, which is why the distance carried is read off the animation's own
-clock and curve and restarted rather than added to.
+The slide is an `Animation` on the flow column: `translateY(growth)` to
+`translateY(0)` on `cubic-bezier(0.22, 0.61, 0.36, 1)`, timed to the gap the last
+two pieces kept (capped at 240 ms); a single commit bigger than the screen is
+timed by its distance instead (`sqrt(px) * 12`, capped at 620 ms), because a
+fixed token would cross the whole screen in a few frames. Each piece of growth
+starts its own
+additive animation (`composite: 'add'`), so the offsets sum instead of being
+replaced — restarting a replace-mode animation snaps the painted offset back to
+the value computed for the restart, and that snap is itself a visible jump.
+Additive animations stay off the compositor; the price buys the absence of a
+bounce.
+
+The distance comes from the scroll position, not from the size report. The host
+writes the end from its own scheduler, and that write can land between two size
+reports; waiting for the next report to pay it back means the growth has already
+painted, and the payment shows up as a push down. The position is therefore read
+in the scroll event, which is dispatched in the rendering steps before paint, and
+the delta it shows is what this frame carries.
 
 The scroll position has one writer. Six sources rank
 `jump > fold > reader > composer > follow > process`; a request below the ease
@@ -135,17 +156,32 @@ running is refused, and the following sources are refused while the reader holds
 the container. A reader who scrolls takes the hold until they come back to the
 end.
 
+A door's roll goes through the same ownership: `foldBusy()` is true while it
+runs, so the slide and the hand-back stand down, and the hand-back is made again
+once it lands — provided the reader started at the end and did not scroll in
+between.
+
 ## Tests
 
 ```bash
-npm test                            # the three browser harnesses
+npm test                            # the nine browser harnesses
 node test/live.mjs                  # against a running DSH web app
+node test/fold-live.mjs             # a real fold in a real conversation
 ```
 
-The three harnesses drive a headless Chromium over CDP against a fake host page,
-so they need no DSH install. `test/live.mjs` reads the `?token=` URL out of the
-running app's log, drives the real chat frame, and is the one that catches a
-host that moved.
+The nine harnesses drive a headless Chromium over CDP against a fake host page,
+so they need no DSH install. Six of them are regressions: `jitter-probe` samples
+a fixed marker block every frame, where any rise counts as visible shaking;
+`race-probe` makes the fake host write the end one frame late, to catch the class
+of race between the host's write and the size batch; `burst-probe` hands the view
+more than a screenful in one commit; `collapse-probe`, `open-probe` and
+`group-probe` cover both directions of both door shapes.
+
+The two live suites read the `?token=` URL out of the running app's log and drive
+the real chat frame. `live.mjs` catches a host that moved; `fold-live.mjs` opens a
+real conversation, presses a real door, and confirms the roll happens on the real
+marks — it is also the only suite that can find a harness whose assumed shape
+disagrees with the host.
 
 ## Limitations
 
@@ -167,8 +203,15 @@ host that moved.
   to the host's own jump. Reduced motion is read from the page:
   `data-dsh-stream-motion-motion="reduced"` or `"full"` wins, and with neither
   the system preference answers.
-- The fade duration, the slide token and the catch-up threshold are constants
-  here, not settings.
+- A door is found by `data-disclosure-row` / `aria-expanded` / `aria-controls`. A
+  host that folds with different marks leaves those doors unanimated, falling
+  back to the host's own instant toggle rather than guessing at one.
+- A tool group only has a height to roll while it is capped. The ones carrying
+  `data-group-expanded-mode` are fully open and never fold their body, so a press
+  only changes the group's own flag and the plugin stays out of it — animating a
+  height that does not change would be motion invented for its own sake.
+- The fade duration, the slide token, the catch-up threshold and a door's roll
+  length are constants here, not settings.
 
 ## Reference project
 
@@ -185,6 +228,7 @@ Derived from there, rewritten for this package:
 | --- | --- |
 | `src/reveal/{diff,engine,paint,text,params}.js` | `packages/client/src/features/chat-reveal/` |
 | `src/follow/{follow,scroll-owner,scroll-ease,process-follow,chat-dom,ease}.js` | `packages/client/src/features/chat-follow/` and `packages/engine/src/` |
+| `src/follow/fold-glide.js` | `packages/client/src/features/chat-fold/{fold-glide,fold-glide-parts}.ts` |
 | `src/frame.js`, `src/bus.js` | `packages/engine/src/{frame,bus}.ts` |
 
 What changed in the port: TypeScript to JavaScript; the theme's feature registry,
@@ -193,12 +237,17 @@ package needs no theme; every mark renamed from `dsh-claude-*` to
 `dsh-stream-motion*`; the two body gates split so a browser with only one of the
 two APIs still gets the half it can run; the `::highlight()` rule subjects widened
 from one descendant selector to two, so a container whose own text node is the
-streamed text fades too; and the smoothed press added, which the original does
-not have — there the back-to-end button still teleports.
+streamed text fades too; the slide made additive and started from the scroller's
+scroll event; the door reading its body from the root's own children when no
+`aria-controls` names it; the door narrowed to the disclosure row and to a tool
+group that is actually capped, since the original also carries the theme's
+message fold, process summary and reasoning stream, none of which were ported;
+and the smoothed press added, which the original does not have — there the
+back-to-end button still teleports.
 
 New here, not derived: `package.json`, `cordis.patch.yml`, `src/host.js`,
 `src/client.js`, `src/{motion,session,stylesheet,params}.js`, `build.mjs`,
-`icon.svg`, `locale/`, and all four test harnesses.
+`icon.svg`, `locale/`, and all nine test harnesses plus the two live suites.
 
 The upstream MIT notice is reproduced in full in [NOTICE.md](NOTICE.md).
 

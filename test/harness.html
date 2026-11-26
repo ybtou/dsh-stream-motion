@@ -87,6 +87,28 @@
 
   window.__frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   window.__sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  // Optional stand-in for the host's own follow, installed before the plugin so
+  // its ResizeObserver fires first — the plugin's `afterHost` subscription is
+  // rebuilt to be younger, exactly as in the app. It pins the end by the growth
+  // it measures, synchronously, the way the host's scroll writer does, and it
+  // does so unconditionally while following: a host that first checked "am I
+  // exactly at the tail" would stop pinning the moment one growth landed.
+  if (new URLSearchParams(location.search).has('hostpin')) {
+    const column = document.getElementById('column')
+    const scroller = document.getElementById('scroll')
+    let last = column.getBoundingClientRect().height
+    window.__hostPinFires = 0
+    new ResizeObserver(() => {
+      const height = column.getBoundingClientRect().height
+      const grew = height - last
+      last = height
+      if (grew <= 0) return
+      window.__hostPinFires += 1
+      scroller.scrollTop = scroller.scrollTop + grew
+    }).observe(column)
+    window.__hostPin = true
+  }
 </script>
 <script src="/lib/client.js"></script>
 <script>

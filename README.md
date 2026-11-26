@@ -2,7 +2,7 @@
 
 # dsh-stream-motion
 
-**回答流式输出时，聊天区做两件事：新到的字逐字淡入，被宿主贴底推上去的文字被滑回原位，而不是跳一下。**
+**回答流式输出时，聊天区做两件事：新到的字逐字淡入，被宿主贴底推上去的文字被滑回原位，而不是跳一下；工具与思考行的开合也卷动高度，而不是整块瞬移。**
 
 [![简体中文](https://img.shields.io/badge/lang-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-red.svg)](README.md)
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.en.md)
@@ -74,6 +74,11 @@ npm run build        # src/ -> lib/client.js + lib/host.js
 **追赶。** 被限高的过程体（可折叠的工具输出）落后超过 40 px 后，会用一条临界阻尼弹簧走到
 自己的末尾，读起来是追赶，而不是宿主那种慢悠悠的平滑滚动。
 
+**折叠。** 宿主的思考行与工具行靠一次提交就插入或摘掉正文，中间没有任何过渡，于是它们下面
+的所有内容一帧之内挪掉「正文高度」那么多。这个包在中间放一段高度动画：关闭时在正文还挂着
+的时候截下点击，把正文卷上去，落地之后再真的按一次按钮；打开时放行，等宿主插好正文，从它
+关闭时的高度卷出来。超过一屏的盒子先走屏幕上可见的那一段，否则可见文字会被带着飞过去。
+
 ## 工作原理
 
 这里没有任何东西解析网络流。所有输入都是宿主已经写好的标记，本包不在聊天树里写任何标记：
@@ -86,6 +91,7 @@ npm run build        # src/ -> lib/client.js + lib/host.js
 | `data-conversation-scroll` | 对话滚动容器 | 位置的所有者 |
 | `data-chat-running` | 当前轮次的行 | 钉在容器底部，需要反向滑移 |
 | `data-step-process-body` | 被限高的工具组主体 | 要追赶的盒子 |
+| `data-disclosure-row`、`aria-expanded`、`aria-controls` | 折叠控制与它开的主体 | 一扇门 |
 | `data-conversation-session`、`data-phase` | 对话体与根节点 | 屏幕上哪个会话 |
 
 淡入骑在 `::highlight()` 上：这个伪元素的属性集里没有 `opacity`，所以 alpha 花在颜色上，
@@ -94,23 +100,40 @@ npm run build        # src/ -> lib/client.js + lib/host.js
 的每一个元素，实测就是流式期间整页 style recalc。
 
 滑移是流列元素上的一个 `Animation`：`translateY(增长量)` 到 `translateY(0)`，曲线
-`cubic-bezier(0.22, 0.61, 0.36, 1)`，上限 240 ms，时长取相邻两批之间的间隔 —— 下一批落下
-时还在播的滑移，重启的距离里包含它还没还完的部分，位移就会随每次爆发累加。附加式动画上不
-了合成器，所以已走过的距离是从动画自己的时钟和曲线上读出来再重启，而不是相加。
+`cubic-bezier(0.22, 0.61, 0.36, 1)`，时长取相邻两批之间的间隔（上限 240 ms）；一次提交塞进
+一屏以上时改由距离定时（`sqrt(px) * 12`，上限 620 ms），否则固定时长会把整屏在几帧里扫过去。
+每笔增长各自起
+一段加法合成（`composite: 'add'`）的动画，位移因此是求和而不是替换 —— 替换式动画重启会把已
+经画出去的值拽回重启那一刻算出的值，那本身就是一次跳动。加法合成上不了合成器，代价换的是
+没有回弹。
+
+位移的起点不是尺寸回调，而是**滚动位置本身**：宿主在自己的调度器里写末尾，那次写入可能落在
+两次尺寸报告之间，若等到下一次报告才补，增长已经画出来了，补的动作就成了下推。所以位置在
+滚动事件里读（渲染步骤中、绘制之前），读到的增量就是这一帧要还的距离。
 
 滚动位置只有一个写入者。六个来源的优先级是
 `jump > fold > reader > composer > follow > process`；比正在跑的缓动更低的请求会被拒绝，
 读者按住容器时所有跟随类来源都被拒绝。读者一旦滚动就取得按住权，直到他们自己回到末尾。
 
+折叠的卷动也走同一条所有权：卷动期间 `foldBusy()` 为真，跟随的滑移与交还都让位，落地之后再
+交还一次，条件是读者起点在末尾且期间没有自己滚动。
+
 ## 测试
 
 ```bash
-npm test                            # 三个浏览器工装
+npm test                            # 九个浏览器工装
 node test/live.mjs                  # 对着正在运行的 DSH web app
+node test/fold-live.mjs             # 真实对话里的真实折叠
 ```
 
-三个工装通过 CDP 驱动无头 Chromium 跑一个假宿主页面，不需要装 DSH。`test/live.mjs` 从运行中
-的应用日志里读 `?token=` 的 URL，驱动真实的聊天框，是那个能抓到「宿主挪了位置」的套件。
+九个工装通过 CDP 驱动无头 Chromium 跑一个假宿主页面，不需要装 DSH。其中六个是回归用的：
+`jitter-probe` 逐帧采样一个固定参照块，任何回升都算可见抖动；`race-probe` 让假宿主晚一帧
+才写末尾，专门抓「宿主写入与尺寸批次不同步」这一类竞态；`burst-probe` 一次提交塞进一屏以上
+的文字；`collapse-probe`、`open-probe`、`group-probe` 覆盖两种门形状的两个方向。
+
+两个 live 套件从运行中应用的日志里读 `?token=` 的 URL，驱动真实的聊天框。`live.mjs` 抓「宿主
+挪了位置」这一类形状变化；`fold-live.mjs` 打开一个真实会话，点真实的门，确认卷动真的发生在
+真实标记上 —— 它也是唯一能发现「工装假设的形状与宿主不一致」的套件。
 
 ## 限制
 
@@ -124,7 +147,11 @@ node test/live.mjs                  # 对着正在运行的 DSH web app
   走到末尾。
 - 减动效时淡入与滑移都退场，按下交回宿主自己的跳转。减动效从页面读：
   `data-dsh-stream-motion-motion="reduced"` 或 `"full"` 优先，两者都没有时由系统偏好回答。
-- 淡入时长、滑移曲线与追赶阈值在这里是常量，不是设置项。
+- 折叠的卷动靠 `data-disclosure-row` / `aria-expanded` / `aria-controls` 找门。宿主换成别的
+  折叠标记时，那些门不动画，退回宿主自己的瞬时开关，而不是猜一个。
+- 工具组只在被限高时才有可卷的高度。`data-group-expanded-mode` 存在的那一组完全展开、正文
+  从不收起，点它只改组自己的开关，插件不介入 —— 给一个不变的高度做动画就是凭空造运动。
+- 淡入时长、滑移曲线、追赶阈值与门的卷动时长在这里是常量，不是设置项。
 
 ## 参考项目
 
@@ -140,17 +167,21 @@ node test/live.mjs                  # 对着正在运行的 DSH web app
 | --- | --- |
 | `src/reveal/{diff,engine,paint,text,params}.js` | `packages/client/src/features/chat-reveal/` |
 | `src/follow/{follow,scroll-owner,scroll-ease,process-follow,chat-dom,ease}.js` | `packages/client/src/features/chat-follow/` 与 `packages/engine/src/` |
+| `src/follow/fold-glide.js` | `packages/client/src/features/chat-fold/{fold-glide,fold-glide-parts}.ts` |
 | `src/frame.js`、`src/bus.js` | `packages/engine/src/{frame,bus}.ts` |
 
 移植时改了什么：TypeScript 转 JavaScript；去掉主题的功能注册表、设置行、样式表流水线和皮肤
 词汇重写，所以本包不需要主题；所有标记从 `dsh-claude-*` 改名为 `dsh-stream-motion*`；两个
 body 门拆开，于是只有其中一个 API 的浏览器仍能拿到它能跑的那一半；`::highlight()` 规则的
-主语从一个后代选择器扩成两个，这样「文字直挂在流式容器自身」的情形也能淡入；以及新增了上游
-没有的平滑按下 —— 那边「回到底部」按钮仍然是瞬移。
+主语从一个后代选择器扩成两个，这样「文字直挂在流式容器自身」的情形也能淡入；滑移改为加法
+合成并从滚动事件起算；门的正文在没有 `aria-controls` 时从 root 自己的子元素里找；门只认
+披露行与被限高的工具组 —— 上游还带着主题的消息折叠、过程摘要与思考流，那些没有移植，而
+没有高度上限的工具组交给宿主自己处理；以及新增了上游没有的平滑按下 —— 那边「回到底部」
+按钮仍然是瞬移。
 
 新写、非移植：`package.json`、`cordis.patch.yml`、`src/host.js`、`src/client.js`、
 `src/{motion,session,stylesheet,params}.js`、`build.mjs`、`icon.svg`、`locale/`，
-以及四个测试工装。
+以及九个测试工装与两个 live 套件。
 
 上游的 MIT 声明全文保留在 [NOTICE.md](NOTICE.md)。
 

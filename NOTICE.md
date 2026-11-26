@@ -11,6 +11,7 @@ bottom of this file.
 | --- | --- |
 | `src/reveal/{diff,engine,paint,text,params}.js` | `packages/client/src/features/chat-reveal/` |
 | `src/follow/{follow,scroll-owner,scroll-ease,process-follow,chat-dom,ease}.js` | `packages/client/src/features/chat-follow/` and `packages/engine/src/` |
+| `src/follow/fold-glide.js` | `packages/client/src/features/chat-fold/{fold-glide,fold-glide-parts}.ts` |
 | `src/frame.js`, `src/bus.js` | `packages/engine/src/{frame,bus}.ts` |
 
 ## What changed in the port
@@ -25,12 +26,23 @@ bottom of this file.
   to two, so a container whose own text node is the streamed text fades too.
 - The smoothed press was added. The original does not have it: there the
   back-to-end button still teleports.
+- The slide is additive (`composite: 'add'`, one animation per piece of growth)
+  and is started from the scroller's scroll event rather than from the size
+  batch. The original restarts one replace-mode animation per growth, which
+  snaps the painted offset back to the restart's computed value and shows as a
+  bounce when the host's own write lands a frame away from the size report.
+- The door glide reads the body from the root's own children when a control
+  names no `aria-controls`, so the disclosure shape without one is covered too.
+- The door glide was narrowed to the disclosure row and to a tool group that is
+  actually capped. The original also carries the theme's message fold, process
+  summary and reasoning stream; those were not ported, and a tool group without
+  a height cap is left to the host instead of being animated to its own height.
 
 ## What is original to this package
 
 `package.json`, `cordis.patch.yml`, `src/host.js`, `src/client.js`,
 `src/{motion,session,stylesheet,params}.js`, `build.mjs`, `icon.svg`,
-`locale/`, and all four test harnesses.
+`locale/`, and all nine test harnesses plus the two live suites.
 
 ## Upstream notice
 

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>dsh-stream-motion harness</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font: 14px/1.5 system-ui; }
+  #frame { display: flex; flex-direction: column; height: 100vh; }
+  /* The session wrapper the host puts between the page and the chat frame: it
+     has to pass the height on, or the scroller has no range to scroll. */
+  #conversation { display: flex; flex-direction: column; flex: auto; min-height: 0; }
+  #root { position: relative; display: flex; flex-direction: column; flex: auto; min-height: 0; }
+  #scroll { flex: auto; overflow: clip auto; min-height: 0; }
+  #column { display: flex; flex-direction: column; }
+  .block { padding: 8px; border-bottom: 1px solid #ddd; }
+  #composer { flex: none; height: 60px; background: #f6f6f6; }
+  #toBottomSlot { position: absolute; right: 16px; bottom: 80px; }
+</style>
+</head>
+<body>
+<!-- The host's shape: the conversation root names the session, the flow column
+     holds the blocks, the scroller owns the position, and the host's own
+     back-to-end button stands in the slot after the chat frame. -->
+<div id="frame" data-phase="active">
+  <div id="conversation" data-conversation-session="session-a">
+    <div id="root" data-chat-following-tail="">
+      <div id="scroll" data-conversation-scroll>
+        <div id="column" data-chat-flow>
+          <div id="history" data-streaming="">older text that was already on the page</div>
+          <div id="answer"></div>
+        </div>
+      </div>
+    </div>
+    <div id="toBottomSlot" hidden>
+      <button type="button" id="toBottom">down</button>
+    </div>
+  </div>
+  <div id="composer" data-composer-card>
+    <div data-composer-seat>composer</div>
+  </div>
+</div>
+
+<script>
+  // The host's module loader, reduced to what a bundle calls: load() runs the
+  // factory once and hands the exports to the harness.
+  const disposers = []
+  window.__ModuleLoader__ = {
+    load({ id, factory }) {
+      const exports = factory(() => { throw new Error('this bundle imports nothing from the host') })
+      window.__applied = {
+        id,
+        apply() {
+          const ctx = {
+            effect(execute, label) {
+              const dispose = execute()
+              disposers.push(dispose)
+              return { dispose, label }
+            },
+          }
+          return exports.apply(ctx)
+        },
+        dispose() {
+          for (const dispose of disposers) if (typeof dispose === 'function') dispose()
+        },
+      }
+    },
+  }
+
+  window.__addBlock = (text) => {
+    const block = document.createElement('div')
+    block.className = 'block'
+    block.setAttribute('data-chat-flow-key', 'k' + Math.random().toString(36).slice(2))
+    block.textContent = text
+    document.getElementById('column').appendChild(block)
+    return block
+  }
+
+  window.__addStreaming = (text) => {
+    const block = window.__addBlock('')
+    const answer = document.createElement('div')
+    answer.setAttribute('data-streaming', '')
+    answer.textContent = text
+    block.appendChild(answer)
+    return { block, answer }
+  }
+
+  window.__frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  window.__sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+</script>
+<script src="/lib/client.js"></script>
+<script>
+  try {
+    window.__applied.apply()
+    window.__ready = true
+  } catch (error) {
+    window.__bootError = String(error && error.stack || error)
+  }
+</script>
+</body>
+</html>

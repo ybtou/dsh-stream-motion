@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Stream motion",
+    "description": "As an answer streams, new characters fade in and the text the host's pin pushes up is slid back into place instead of jumping. The chat area's follow is handed back at the moments that lose it, and the back-to-end button walks to the end rather than teleporting. Verified on DSH 0.2.3-alpha.2 only, and pinned to it; installation on another version is refused, and bypassing that may cause unknown problems."
+  }
+}

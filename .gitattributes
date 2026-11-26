@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# The built bundle is minified; diffing it as text helps nobody.
+lib/client.js linguist-generated
+lib/host.js linguist-generated

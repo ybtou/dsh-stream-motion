@@ -1,0 +1,3 @@
+- insert:
+    - id: stream-motion
+      name: 'dsh-stream-motion'

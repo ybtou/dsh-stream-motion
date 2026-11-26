@@ -1,0 +1,26 @@
+{
+  "name": "dsh-stream-motion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stream motion for DeepSeek Harness: characters fade in as an answer arrives, and the chat area's follow is slid on the compositor instead of jumping.",
+  "license": "MIT",
+  "author": "ybtou",
+  "engines": { "dsh": "0.2.3-alpha.2" },
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["lib/host.js", "lib/client.js", "cordis.patch.yml", "locale/*.json", "README.md", "README.en.md", "LICENSE", "icon.svg"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": [] }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/reveal-probe.mjs && node test/follow-probe.mjs && node test/tail-press.mjs"
+  },
+  "devDependencies": { "esbuild": "^0.28.2" }
+}

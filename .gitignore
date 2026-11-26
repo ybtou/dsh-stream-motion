@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+.debug/
+
+# Only ever left behind by a failed build.
+lib/client.failed.js

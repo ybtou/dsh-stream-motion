@@ -1,0 +1,220 @@
+/**
+ * The engine: the step rules' mark, the scan observer, the paint frames and the
+ * reader-fold guard.
+ *
+ * The reveal is a change of the text's own alpha, not a swap of colours:
+ * characters arrive faint and come to rest, with nothing repainted in some
+ * highlight colour. `::highlight()` accepts no opacity, so alpha rides on
+ * `color`, one rule per step (steps.js).
+ *
+ * The engine keeps its scope inside the streaming containers: the step rules are
+ * scoped under `[data-streaming]`, so elements outside one are filtered out by
+ * their ancestor during style matching and pay nothing, and the observer only
+ * looks at what changes inside a streaming container.
+ */
+
+import { requestFrame } from '../frame.js'
+import { subscribeMutations } from '../bus.js'
+import { inCurrentConversation, observeSession } from '../session.js'
+import { createRevealScanner } from './diff.js'
+import { createRevealPainter } from './paint.js'
+import {
+  CHAT_REVEAL_COLOR_VAR,
+  CHAT_REVEAL_FOLD_QUIET_MS,
+  CHAT_REVEAL_HIGHLIGHT_PREFIX,
+  CHAT_REVEAL_RUN_ATTR,
+  CHAT_REVEAL_STEPS,
+  STREAMING_ATTRIBUTE,
+  STREAMING_SELECTOR,
+  createRevealState,
+} from './params.js'
+
+/**
+ * The engine's Custom Highlight table: one highlight per step, its segments
+ * swapped every frame.
+ *
+ * The registry is written once per step, the first time it is used; after that
+ * only the highlight's own segments change. Unregistering and registering every
+ * step's name on each frame would make the browser rebuild its highlight markers
+ * each time. A step that is empty this frame is cleared rather than
+ * unregistered — the next frame very likely needs it.
+ */
+function createRevealHighlights(registry, HighlightConstructor) {
+  const highlights = new Array(CHAT_REVEAL_STEPS).fill(null)
+
+  const clearHighlights = () => {
+    for (let step = 0; step < CHAT_REVEAL_STEPS; step += 1) {
+      if (highlights[step] === null) continue
+      registry.delete(CHAT_REVEAL_HIGHLIGHT_PREFIX + step)
+      highlights[step] = null
+    }
+  }
+
+  const showStep = (step, ranges) => {
+    let highlight = highlights[step] ?? null
+    if (ranges.length === 0) {
+      if (highlight !== null && highlight.size > 0) highlight.clear()
+      return
+    }
+    if (highlight === null) {
+      highlight = new HighlightConstructor()
+      highlights[step] = highlight
+      registry.set(CHAT_REVEAL_HIGHLIGHT_PREFIX + step, highlight)
+    } else {
+      highlight.clear()
+    }
+    for (const range of ranges) highlight.add(range)
+  }
+
+  return { clearHighlights, showStep }
+}
+
+/**
+ * Publish an element's own colour to CHAT_REVEAL_COLOR_VAR.
+ *
+ * What matters is the colour the markdown layer actually paints — a link's
+ * token, a syntax token, a list marker — not what this module last wrote. The
+ * computed colour is read, and skipped entirely when the element still carries
+ * the colour recorded for it, which is every frame after the first.
+ *
+ * A value inherited from an ancestor already is its colour (bold inside a
+ * paragraph, body text inside a list item), so nothing is written then: an
+ * inline style is a style invalidation, and it would wake anything else on the
+ * page watching style attributes.
+ */
+function createRunColorPublisher() {
+  const writtenColors = new WeakMap()
+
+  return (element) => {
+    if (element === null) return
+    // The step rules name this mark as their subject: the element that carries
+    // text is the only thing a highlight can be drawn on, and marking it once is
+    // what keeps each batch from re-matching the streaming block whole.
+    if (!element.hasAttribute(CHAT_REVEAL_RUN_ATTR)) element.setAttribute(CHAT_REVEAL_RUN_ATTR, '')
+    const style = window.getComputedStyle(element)
+    const color = style.color
+    if (writtenColors.get(element) === color) return
+    writtenColors.set(element, color)
+    if (style.getPropertyValue(CHAT_REVEAL_COLOR_VAR).trim() === color) return
+    element.style.setProperty(CHAT_REVEAL_COLOR_VAR, color)
+  }
+}
+
+/**
+ * Install the engine.
+ *
+ * @returns the disposer, or null when this browser cannot draw the fade at all
+ *     (no Custom Highlight API). The animation choice belongs to the caller,
+ *     which has to take a running engine down with it.
+ */
+export function createEngine() {
+  const registry = globalThis.CSS?.highlights
+  const HighlightConstructor = globalThis.Highlight
+  if (registry === undefined || registry === null || typeof HighlightConstructor !== 'function') return null
+
+  const state = createRevealState()
+  for (const container of document.querySelectorAll(STREAMING_SELECTOR)) state.historyContainers.add(container)
+
+  const { clearHighlights, showStep } = createRevealHighlights(registry, HighlightConstructor)
+  const publishRunColor = createRunColorPublisher()
+  const paint = createRevealPainter(state, { clearHighlights, showStep, publishRunColor })
+  const scan = createRevealScanner(state, { publishRunColor, paint, accepts: inCurrentConversation })
+
+  let cancelBaseline = null
+  // Per session: snapshots, text nodes, ranges and pending frames end on the broadcast.
+  const releaseSession = () => {
+    cancelBaseline?.()
+    cancelBaseline = null
+    state.cancelPaintFrame?.()
+    Object.assign(state, createRevealState())
+    clearHighlights()
+  }
+  const stopSession = observeSession(() => {
+    releaseSession()
+    state.baselinePending = true
+    // The broadcast only releases state before paint; scanning rides the next frame.
+    cancelBaseline = requestFrame({ write() { cancelBaseline = null; scan(null) } })
+  })
+
+  /**
+   * Note the containers a fold is about to reflow.
+   *
+   * Pressing a thinking row is not the model emitting characters, but the row it
+   * toggles lives inside a container that still carries data-streaming, and when
+   * the folded summary happens to be a prefix of the expanded content the
+   * mutation looks exactly like an append. The click is the only signal that
+   * tells them apart, so it is caught before the host's handler runs and the
+   * containers it can reach are taken out of the reveal for a moment.
+   */
+  const rememberReaderFold = (event) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const until = performance.now() + CHAT_REVEAL_FOLD_QUIET_MS
+    const ownContainer = target.closest(STREAMING_SELECTOR)
+    if (ownContainer !== null) state.foldQuietUntil.set(ownContainer, until)
+    // The control that triggers a fold can live outside the container it
+    // reflows, so the subtree is swept too — on clicks only: a key event's target
+    // is often the whole body, and sweeping its subtree would quiet every
+    // streaming container on the page for one PageUp.
+    if (event.type !== 'click') return
+    for (const container of target.querySelectorAll(STREAMING_SELECTOR)) state.foldQuietUntil.set(container, until)
+  }
+
+  // Only changes inside a streaming container are looked at: a DOM change
+  // anywhere else on the page (another plugin, the sidebar, a timer, the
+  // composer) triggers no scan, and a change inside a container rescans only that
+  // one. A full look is left to a container appearing, disappearing, or gaining
+  // or losing data-streaming.
+  const onRecords = (records) => {
+    let everything = false
+    const touched = new Set()
+    const changes = new Map()
+    for (const record of records) {
+      // data-streaming is watched too: a streaming container is not always "a
+      // newly inserted node" — when the host adds the attribute to a div already
+      // on the page it is one attribute change, and missing it would miss the
+      // whole start of that answer.
+      if (record.type === 'attributes') {
+        everything = true
+        continue
+      }
+      const target = record.target
+      const element = target instanceof Element ? target : target.parentElement
+      const container = element?.closest(STREAMING_SELECTOR) ?? null
+      if (container !== null) {
+        touched.add(container)
+        const batch = changes.get(container) ?? []
+        batch.push(record)
+        changes.set(container, batch)
+      }
+      if (record.type !== 'childList' || everything) continue
+      for (const added of record.addedNodes) {
+        if (!(added instanceof Element)) continue
+        if (added.matches(STREAMING_SELECTOR) || added.querySelector(STREAMING_SELECTOR) !== null) everything = true
+      }
+      for (const removed of record.removedNodes) {
+        if (state.liveContainers.some(live => live === removed || removed.contains(live))) everything = true
+      }
+    }
+    if (everything) scan(null)
+    else if (touched.size > 0) scan(touched, changes)
+  }
+
+  const stopMutations = subscribeMutations(document.body, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    attributeFilter: [STREAMING_ATTRIBUTE],
+  }, onRecords)
+  document.addEventListener('click', rememberReaderFold, true)
+  document.addEventListener('keydown', rememberReaderFold, true)
+  scan(null)
+
+  return () => {
+    stopSession()
+    stopMutations()
+    document.removeEventListener('click', rememberReaderFold, true)
+    document.removeEventListener('keydown', rememberReaderFold, true)
+    releaseSession()
+  }
+}

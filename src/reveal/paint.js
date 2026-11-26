@@ -27,6 +27,32 @@ export function createRevealPainter(state, hooks) {
   const { clearHighlights, publishRunColor, showStep } = hooks
 
   /**
+   * What each step's highlight held after the last frame. A run spends
+   * CHAT_REVEAL_MS / CHAT_REVEAL_STEPS on one step — thirty milliseconds, longer
+   * than a frame — so on roughly every other frame a step's segments are the
+   * same ones the browser is already drawing. Handing them over again makes it
+   * rebuild the highlight markers for that step, which is the expensive half of
+   * a frame here; leaving an unchanged step alone costs one comparison.
+   */
+  let painted = null
+
+  const forgetPainted = () => {
+    painted = null
+  }
+
+  /** Same text nodes, same offsets: the browser would draw exactly what it is drawing. */
+  const sameSegments = (before, after) => {
+    if (before === undefined || before === null) return after.length === 0
+    if (before.length !== after.length) return false
+    for (let index = 0; index < before.length; index += 1) {
+      const one = before[index]
+      const two = after[index]
+      if (one.node !== two.node || one.start !== two.start || one.end !== two.end) return false
+    }
+    return true
+  }
+
+  /**
    * The main thread is full: the segments in hand are settled, and new
    * characters arrive at full strength for a while. The fade would not paint
    * smoothly anyway — every step would sit for tens of milliseconds — and its
@@ -38,6 +64,7 @@ export function createRevealPainter(state, hooks) {
     state.slowFrames = 0
     state.lastFrameAt = 0
     state.liveRuns.length = 0
+    forgetPainted()
     clearHighlights()
   }
 
@@ -55,6 +82,7 @@ export function createRevealPainter(state, hooks) {
   const paint = (now, fromFrame) => {
     state.cancelPaintFrame = null
     if (state.liveRuns.length === 0) {
+      forgetPainted()
       clearHighlights()
       return
     }
@@ -157,8 +185,14 @@ export function createRevealPainter(state, hooks) {
     }
     state.liveRuns.length = kept
 
+    const nextPainted = new Array(CHAT_REVEAL_STEPS).fill(null)
     for (let step = 0; step < CHAT_REVEAL_STEPS; step += 1) {
       const list = buckets[step] ?? []
+      const before = painted === null ? null : painted[step]
+      if (sameSegments(before, list)) {
+        nextPainted[step] = before
+        continue
+      }
       // A StaticRange does not track DOM changes, and every frame builds them
       // from the fresh snapshot, so tracking is not needed; a live Range would
       // have the page fix its boundaries on every DOM change until collected.
@@ -169,10 +203,22 @@ export function createRevealPainter(state, hooks) {
         endOffset: segment.end,
       }))
       showStep(step, ranges)
+      nextPainted[step] = list
     }
+    painted = nextPainted
     if (state.liveRuns.length > 0) scheduleFrame()
-    else clearHighlights()
+    else {
+      forgetPainted()
+      clearHighlights()
+    }
   }
+
+  /**
+   * The registry can be emptied from outside this loop — a session broadcast
+   * deletes every step — and a remembered frame would then claim a step is
+   * already drawn when nothing is. The engine calls this wherever it clears.
+   */
+  paint.forget = forgetPainted
 
   return paint
 }

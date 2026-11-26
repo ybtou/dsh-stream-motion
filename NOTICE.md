@@ -45,6 +45,13 @@ bottom of this file.
   scanning every subscription), and the structural moments inside a stream no
   longer hand the follow back — the host keeps its own follow through them, so
   the guard has only the fold's and the reader's own hand-backs left.
+- The colour a run settles on is read in the paint frame, not in the mutation
+  callback. Upstream reads it in the scan, where the batch of new text has just
+  dirtied the tree, so the first `getComputedStyle` resolves style for the whole
+  document there and then; measured on a real stream that was the largest single
+  cost in the skin. The scan now only marks, and the frame reads.
+- A step whose highlight segments did not change since the last frame is left
+  alone instead of being handed to the browser again.
 
 ## What is original to this package
 

@@ -138,6 +138,33 @@ is the element the text hangs off — never "anything under the streaming block"
 because a descendant-combinator subject re-matches every element below it on
 each batch, which measures as the whole page's style recalc while a stream runs.
 
+That colour is read **in the paint frame, not in the mutation callback**. The
+mark and the read are therefore two things: setting an attribute on an element is
+a write, and a write alone never makes the browser resolve style; `getComputedStyle`
+does — it answers a live object, and the first property taken off it resolves
+style for the whole document. Doing that inside a mutation callback is doing it at
+the exact moment the new text has dirtied the tree, and the read pays for the
+whole recalculation there and then. Measured on a real stream: one callback
+totalled 2281 ms across a reply, with 5 ms of work of its own. So the scan only
+marks, and the paint frame reads the colour, where the browser has already
+resolved style to draw the frame.
+
+A fixed-batch comparison (`test/append-cost.mjs`, 240 batches, one page and one
+container) puts numbers on it: reading in the callback costs about 50–75 ms a
+time, pushing that same callback's read to rAF costs about 0.05–1 ms a time,
+roughly a thousand times less; and the `getComputedStyle` call itself is only
+2–4 ms either way, so what is expensive is reading while style is dirty, not the
+call. Nor does moving it into the frame push the cost into the frame: the
+`per-frame` and `dropped` arms keep almost the same frame gaps (`p50 73.4` vs
+`70`, `over50 239` vs `240`).
+
+The paint frame also remembers what each step drew on the frame before. A run
+spends `CHAT_REVEAL_MS / CHAT_REVEAL_STEPS` (30 ms) on one step — longer than a
+frame — so on roughly every other frame a step's segments are the ones the
+browser is already drawing; handing them over again makes it rebuild that step's
+highlight markers, which is the expensive half of a frame here. An unchanged
+step is skipped for the cost of one comparison.
+
 The slide is an `Animation` on the flow column: `translateY(distance)` to
 `translateY(0)` on `cubic-bezier(0.22, 0.61, 0.36, 1)`, timed to the gap the last
 two pieces kept (capped at 240 ms); a single commit bigger than the screen is
@@ -189,6 +216,14 @@ the real chat frame. `live.mjs` catches a host that moved; `fold-live.mjs` opens
 real conversation, presses a real door, and confirms the roll happens on the real
 marks — it is also the only suite that can find a harness whose assumed shape
 disagrees with the host.
+
+`append-cost.mjs` is the one quantitative harness in this layer: on the real page
+it appends elements at a fixed batch count and a fixed cadence, running "read
+style in the mutation callback", "push that read to the paint frame" and "drop
+the callback altogether" over one page and one container, recording callback time
+and frame gaps together. A real stream is the wrong instrument for that
+comparison — two runs of one configuration can differ threefold in `peakRuns` —
+which is what this harness exists to replace.
 
 ## Limitations
 

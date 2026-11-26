@@ -108,6 +108,7 @@ function commonSuffix(previous, entries, prefix) {
  */
 export function createRevealScanner(state, hooks) {
   const { paint, publishRunColor } = hooks
+  const markRunColor = publishRunColor.mark ?? publishRunColor
   const accepts = hooks.accepts ?? (() => true)
 
   return (only, changes) => {
@@ -309,12 +310,14 @@ export function createRevealScanner(state, hooks) {
               offset += character.length
               continue
             }
-            // One style read per element per scan: a batch of text usually lands
-            // in one or two nodes, so even a whole paragraph arriving at once
-            // costs a few reads.
+            // One mark per element per scan, and no style read: a scan runs in a
+            // mutation callback, where the new text has just dirtied the tree,
+            // so the first getComputedStyle here would resolve style for the
+            // whole document. The paint frame reads the colour instead, once per
+            // element, when the browser has already done that work.
             if (element !== null && !touchedElements.has(element)) {
               touchedElements.add(element)
-              publishRunColor(element)
+              markRunColor(element)
             }
             const run = {
               container,
@@ -322,7 +325,8 @@ export function createRevealScanner(state, hooks) {
               length: character.length,
               // Placed on the arrival clock once the batch's step is known, below.
               bornAt: now,
-              colorElement: element,
+              // Null, so the first frame that draws this run reads its colour.
+              colorElement: null,
             }
             state.liveRuns.push(run)
             createdRuns.push(run)

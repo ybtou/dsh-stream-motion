@@ -70,7 +70,7 @@ function createRevealHighlights(registry, HighlightConstructor) {
 }
 
 /**
- * Publish an element's own colour to CHAT_REVEAL_COLOR_VAR.
+ * Mark a run's element, and publish its own colour to CHAT_REVEAL_COLOR_VAR.
  *
  * What matters is the colour the markdown layer actually paints — a link's
  * token, a syntax token, a list marker — not what this module last wrote. The
@@ -81,16 +81,31 @@ function createRevealHighlights(registry, HighlightConstructor) {
  * paragraph, body text inside a list item), so nothing is written then: an
  * inline style is a style invalidation, and it would wake anything else on the
  * page watching style attributes.
+ *
+ * The mark and the read are separate because their costs are. Setting an
+ * attribute is a write, and a write alone never makes the browser resolve
+ * style. `getComputedStyle` does: it answers a live object, and the first
+ * property taken off it resolves style for the whole document. Called from a
+ * mutation callback — where the batch of new text has just dirtied the tree —
+ * that read pays for the entire recalculation then and there. Measured on a
+ * real stream it was the single largest cost in the whole skin: one callback of
+ * 2281 ms across a reply, with 5 ms of work of its own. So the scan only marks,
+ * and the paint frame reads the colour, where the browser has already resolved
+ * style to draw the frame and the read costs a lookup.
  */
 function createRunColorPublisher() {
   const writtenColors = new WeakMap()
 
-  return (element) => {
-    if (element === null) return
+  const mark = (element) => {
     // The step rules name this mark as their subject: the element that carries
     // text is the only thing a highlight can be drawn on, and marking it once is
     // what keeps each batch from re-matching the streaming block whole.
     if (!element.hasAttribute(CHAT_REVEAL_RUN_ATTR)) element.setAttribute(CHAT_REVEAL_RUN_ATTR, '')
+  }
+
+  const publish = (element) => {
+    if (element === null) return
+    mark(element)
     const style = window.getComputedStyle(element)
     const color = style.color
     if (writtenColors.get(element) === color) return
@@ -98,6 +113,10 @@ function createRunColorPublisher() {
     if (style.getPropertyValue(CHAT_REVEAL_COLOR_VAR).trim() === color) return
     element.style.setProperty(CHAT_REVEAL_COLOR_VAR, color)
   }
+
+  publish.mark = mark
+
+  return publish
 }
 
 /**
@@ -127,6 +146,7 @@ export function createEngine() {
     cancelBaseline = null
     state.cancelPaintFrame?.()
     Object.assign(state, createRevealState())
+    paint.forget()
     clearHighlights()
   }
   const stopSession = observeSession(() => {

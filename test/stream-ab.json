@@ -1,0 +1,232 @@
+{
+  "on1": {
+    "seconds": 1.9,
+    "frames": {
+      "count": 296,
+      "p50": 3.4,
+      "p95": 13.3,
+      "p99": 73.6,
+      "max": 90,
+      "over32": 4,
+      "over50": 3,
+      "over100": 0
+    },
+    "longTasks": 3,
+    "longTaskTotal": 222,
+    "worstLong": 82
+  },
+  "on2": {
+    "seconds": 8.5,
+    "batches": 7,
+    "peakChars": 1303,
+    "runs": 6,
+    "frames": {
+      "count": 1811,
+      "p50": 3.4,
+      "p95": 10,
+      "p99": 20,
+      "max": 63.4,
+      "over32": 7,
+      "over50": 5,
+      "over100": 0
+    },
+    "longTasks": 4,
+    "longTaskTotal": 237,
+    "worstLong": 65
+  },
+  "off2": {
+    "seconds": 7.6,
+    "batches": 7,
+    "peakChars": 1659,
+    "runs": 0,
+    "frames": {
+      "count": 1358,
+      "p50": 3.4,
+      "p95": 13.3,
+      "p99": 20.1,
+      "max": 86.6,
+      "over32": 8,
+      "over50": 4,
+      "over100": 0
+    },
+    "longTasks": 4,
+    "longTaskTotal": 263,
+    "worstLong": 80
+  },
+  "on3": {
+    "seconds": 20.7,
+    "batches": 40,
+    "peakChars": 3123,
+    "runs": 116,
+    "frames": {
+      "count": 4120,
+      "p50": 3.3,
+      "p95": 10,
+      "p99": 40,
+      "max": 166.6,
+      "over32": 45,
+      "over50": 39,
+      "over100": 10
+    },
+    "longTasks": 38,
+    "longTaskTotal": 3270,
+    "worstLong": 157
+  },
+  "off3": {
+    "seconds": 17.5,
+    "batches": 47,
+    "peakChars": 4124,
+    "runs": 0,
+    "frames": {
+      "count": 3755,
+      "p50": 3.3,
+      "p95": 6.8,
+      "p99": 46.8,
+      "max": 120,
+      "over32": 53,
+      "over50": 32,
+      "over100": 3
+    },
+    "longTasks": 25,
+    "longTaskTotal": 1625,
+    "worstLong": 116
+  },
+  "off4": {
+    "seconds": 8,
+    "batches": 36,
+    "peakChars": 2328,
+    "runs": 0,
+    "frames": {
+      "count": 1575,
+      "p50": 3.4,
+      "p95": 10,
+      "p99": 43.3,
+      "max": 80,
+      "over32": 31,
+      "over50": 6,
+      "over100": 0
+    },
+    "longTasks": 6,
+    "longTaskTotal": 383,
+    "worstLong": 79
+  },
+  "on4": {
+    "seconds": 21.2,
+    "batches": 51,
+    "peakChars": 5511,
+    "runs": 67,
+    "frames": {
+      "count": 4409,
+      "p50": 3.4,
+      "p95": 6.9,
+      "p99": 46.5,
+      "max": 160,
+      "over32": 52,
+      "over50": 30,
+      "over100": 1
+    },
+    "longTasks": 30,
+    "longTaskTotal": 1882,
+    "worstLong": 154
+  },
+  "on5": {
+    "seconds": 26.2,
+    "batches": 40,
+    "peakChars": 2935,
+    "runs": 59,
+    "frames": {
+      "count": 6336,
+      "p50": 3.3,
+      "p95": 6.7,
+      "p99": 13.4,
+      "max": 86.6,
+      "over32": 45,
+      "over50": 23,
+      "over100": 0
+    },
+    "longTasks": 25,
+    "longTaskTotal": 1613,
+    "worstLong": 88
+  },
+  "off5": {
+    "seconds": 17,
+    "batches": 87,
+    "peakChars": 3553,
+    "runs": 0,
+    "frames": {
+      "count": 3091,
+      "p50": 3.4,
+      "p95": 10,
+      "p99": 46.7,
+      "max": 113.4,
+      "over32": 85,
+      "over50": 20,
+      "over100": 2
+    },
+    "longTasks": 14,
+    "longTaskTotal": 934,
+    "worstLong": 108
+  },
+  "off6": {
+    "seconds": 12.6,
+    "batches": 55,
+    "peakChars": 2305,
+    "runs": 0,
+    "frames": {
+      "count": 3103,
+      "p50": 3.3,
+      "p95": 6.6,
+      "p99": 33.3,
+      "max": 63.6,
+      "over32": 45,
+      "over50": 2,
+      "over100": 0
+    },
+    "longTasks": 2,
+    "longTaskTotal": 109,
+    "worstLong": 59
+  },
+  "on6": {
+    "seconds": 15.8,
+    "batches": 145,
+    "peakChars": 1863,
+    "runs": 171,
+    "frames": {
+      "count": 2556,
+      "p50": 3.3,
+      "p95": 26.6,
+      "p99": 60.1,
+      "max": 190,
+      "over32": 103,
+      "over50": 39,
+      "over100": 6
+    },
+    "longTasks": 17,
+    "longTaskTotal": 1074,
+    "worstLong": 117
+  },
+  "h-on1": {
+    "seconds": 16.3,
+    "batches": 95,
+    "peakChars": 3958,
+    "runs": 183,
+    "frames": {
+      "count": 3653,
+      "p50": 3.3,
+      "p95": 6.7,
+      "p99": 39.9,
+      "max": 70,
+      "over32": 71,
+      "over50": 4,
+      "over100": 0
+    },
+    "longTasks": 3,
+    "longTaskTotal": 159,
+    "worstLong": 58,
+    "perSecond": {
+      "over50": 0.25,
+      "long": 0.18,
+      "longMs": 9.8
+    }
+  }
+}

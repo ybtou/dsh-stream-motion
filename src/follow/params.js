@@ -47,6 +47,19 @@ export const SLIDE_BURST_MS_PER_ROOT_PX = 12
 export const SLIDE_BURST_MAX_MS = 620
 /** The curve the stream's slide travels on, and the one `slideCarried` evaluates. */
 export const GLIDE_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+/**
+ * How long the offset takes to reach zero when the slide is ended early — a
+ * shrink, a thinking row ending, the live row leaving.
+ *
+ * Cancelling instead lands it in one frame, which lifts the text by whatever
+ * distance was still carried: measured 89 upward moves over 2 px in a real
+ * reply, the worst 31 px. A third of a second is long enough that the eye reads
+ * a settle rather than a jump, and short enough that the next growth is not
+ * left waiting on it.
+ */
+export const SLIDE_SETTLE_MS = 320
+/** Easing for that settle: fast at first so it reads as continuing, slow at the end. */
+export const SLIDE_SETTLE_EASE = 'cubic-bezier(0.33, 0, 0.2, 1)'
 
 /** A door's own length: how long a tool or thinking row takes to roll shut or open. */
 export const FOLD_ROLL_MS = 220

@@ -41,7 +41,7 @@ re-check the DOM marks in the table under "How it works" against the host's
 `dsh-client-ui-chat` build, before widening the range.
 
 To install anyway on an unverified version, DSH takes an explicit exact-version
-exemption for `dsh-stream-motion@0.1.0` on that runtime — through the plugin
+exemption for `dsh-stream-motion@0.2.0` on that runtime — through the plugin
 manager, or `dsh plugin allow-version`. Treat what happens next as untested.
 
 ## Install
@@ -176,6 +176,17 @@ frame before it stood, only ever moving upward — and a replace-mode transform
 stays on the compositor instead of repainting on the main thread every frame.
 (Additive composition sums the same numbers and cannot bounce, but an additive
 transform stays off the compositor.)
+
+When the slide is ended early it **settles instead of being cancelled**.
+`cancel()` lands the column at `translateY(0)` within one frame, and that offset
+is exactly how far the content is drawn below its final place — one cancel is one
+single-frame jump upward. Measured on real replies: the host remounts its
+streaming container as the answer grows, each remount reads as a shrink, and one
+reply ends the slide 25 times; with `cancel()` that came to 574 upward moves over
+2 px, the largest 45 px, and with a `SLIDE_SETTLE_MS = 320` ease it falls to 217
+and 17 px. The record stays in `slide` while it settles, so a growth arriving
+mid-settle adds to the distance left rather than restarting from a stale
+baseline, and the counter-slid elements ride the same distance negated.
 
 The distance comes from the scroll position, not from the size report. The host
 writes the end from its own scheduler, and that write can land between two size

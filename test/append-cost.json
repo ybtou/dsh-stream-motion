@@ -552,5 +552,285 @@
       "rects": 0,
       "rectMs": 0
     }
+  },
+  "2026-11-26T17:04:23.299Z": {
+    "per-append@16ms": {
+      "mode": "per-append",
+      "batches": 240,
+      "gapMs": 16,
+      "elapsedMs": 29042,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 25608.3,
+      "themeP50": 104.6,
+      "themeP95": 132.9,
+      "themeMax": 162.7,
+      "frames": {
+        "count": 370,
+        "p50": 106.7,
+        "p95": 140,
+        "max": 179.9,
+        "over50": 240
+      },
+      "styleCalls": 1946,
+      "styleMs": 1.5,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "per-append@5ms": {
+      "mode": "per-append",
+      "batches": 240,
+      "gapMs": 5,
+      "elapsedMs": 28482,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 25072.3,
+      "themeP50": 101.9,
+      "themeP95": 132.1,
+      "themeMax": 167.1,
+      "frames": {
+        "count": 362,
+        "p50": 106.5,
+        "p95": 140,
+        "max": 180,
+        "over50": 240
+      },
+      "styleCalls": 1946,
+      "styleMs": 1.9,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "per-frame@16ms": {
+      "mode": "per-frame",
+      "batches": 240,
+      "gapMs": 16,
+      "elapsedMs": 28707,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 236.4,
+      "themeP50": 0.8,
+      "themeP95": 1.7,
+      "themeMax": 12.4,
+      "frames": {
+        "count": 383,
+        "p50": 103.3,
+        "p95": 146.8,
+        "max": 203.3,
+        "over50": 240
+      },
+      "styleCalls": 1946,
+      "styleMs": 4,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "per-frame@5ms": {
+      "mode": "per-frame",
+      "batches": 240,
+      "gapMs": 5,
+      "elapsedMs": 31325,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 230.6,
+      "themeP50": 0.9,
+      "themeP95": 1.4,
+      "themeMax": 2.3,
+      "frames": {
+        "count": 347,
+        "p50": 106.6,
+        "p95": 160.1,
+        "max": 199.9,
+        "over50": 240
+      },
+      "styleCalls": 1949,
+      "styleMs": 3.3,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "dropped@16ms": {
+      "mode": "dropped",
+      "batches": 240,
+      "gapMs": 16,
+      "elapsedMs": 35122,
+      "callbacks": 240,
+      "themeCalls": 0,
+      "themeTotal": 0,
+      "themeP50": 0,
+      "themeP95": 0,
+      "themeMax": 0,
+      "frames": {
+        "count": 362,
+        "p50": 133.2,
+        "p95": 166.7,
+        "max": 206.6,
+        "over50": 240
+      },
+      "styleCalls": 1920,
+      "styleMs": 3.5,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "dropped@5ms": {
+      "mode": "dropped",
+      "batches": 240,
+      "gapMs": 5,
+      "elapsedMs": 34602,
+      "callbacks": 240,
+      "themeCalls": 0,
+      "themeTotal": 0,
+      "themeP50": 0,
+      "themeP95": 0,
+      "themeMax": 0,
+      "frames": {
+        "count": 365,
+        "p50": 126.7,
+        "p95": 169.9,
+        "max": 232.7,
+        "over50": 240
+      },
+      "styleCalls": 1920,
+      "styleMs": 3.2,
+      "rects": 0,
+      "rectMs": 0
+    }
+  },
+  "2026-11-26T17:08:34.937Z": {
+    "per-append@16ms": {
+      "mode": "per-append",
+      "batches": 240,
+      "gapMs": 16,
+      "elapsedMs": 35370,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 31292.6,
+      "themeP50": 124.9,
+      "themeP95": 171.9,
+      "themeMax": 225.3,
+      "frames": {
+        "count": 351,
+        "p50": 130,
+        "p95": 180,
+        "max": 236.7,
+        "over50": 240
+      },
+      "styleCalls": 1952,
+      "styleMs": 2.7,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "per-append@5ms": {
+      "mode": "per-append",
+      "batches": 240,
+      "gapMs": 5,
+      "elapsedMs": 35247,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 31072.6,
+      "themeP50": 121,
+      "themeP95": 193.7,
+      "themeMax": 236.8,
+      "frames": {
+        "count": 349,
+        "p50": 116.6,
+        "p95": 203.3,
+        "max": 256.8,
+        "over50": 240
+      },
+      "styleCalls": 1952,
+      "styleMs": 2.8,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "per-frame@16ms": {
+      "mode": "per-frame",
+      "batches": 240,
+      "gapMs": 16,
+      "elapsedMs": 36764,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 295.1,
+      "themeP50": 1.1,
+      "themeP95": 2.5,
+      "themeMax": 5,
+      "frames": {
+        "count": 364,
+        "p50": 123.4,
+        "p95": 200.1,
+        "max": 309.9,
+        "over50": 240
+      },
+      "styleCalls": 1954,
+      "styleMs": 3.8,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "per-frame@5ms": {
+      "mode": "per-frame",
+      "batches": 240,
+      "gapMs": 5,
+      "elapsedMs": 30371,
+      "callbacks": 240,
+      "themeCalls": 240,
+      "themeTotal": 249.8,
+      "themeP50": 0.9,
+      "themeP95": 1.8,
+      "themeMax": 6.1,
+      "frames": {
+        "count": 377,
+        "p50": 106.7,
+        "p95": 156.7,
+        "max": 203.3,
+        "over50": 240
+      },
+      "styleCalls": 1948,
+      "styleMs": 2.6,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "dropped@16ms": {
+      "mode": "dropped",
+      "batches": 240,
+      "gapMs": 16,
+      "elapsedMs": 28829,
+      "callbacks": 240,
+      "themeCalls": 0,
+      "themeTotal": 0,
+      "themeP50": 0,
+      "themeP95": 0,
+      "themeMax": 0,
+      "frames": {
+        "count": 392,
+        "p50": 100,
+        "p95": 143.3,
+        "max": 199.9,
+        "over50": 240
+      },
+      "styleCalls": 1920,
+      "styleMs": 3.3,
+      "rects": 0,
+      "rectMs": 0
+    },
+    "dropped@5ms": {
+      "mode": "dropped",
+      "batches": 240,
+      "gapMs": 5,
+      "elapsedMs": 31695,
+      "callbacks": 240,
+      "themeCalls": 0,
+      "themeTotal": 0,
+      "themeP50": 0,
+      "themeP95": 0,
+      "themeMax": 0,
+      "frames": {
+        "count": 379,
+        "p50": 109.9,
+        "p95": 169.9,
+        "max": 209.9,
+        "over50": 240
+      },
+      "styleCalls": 1920,
+      "styleMs": 4.6,
+      "rects": 0,
+      "rectMs": 0
+    }
   }
 }

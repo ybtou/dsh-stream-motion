@@ -21,6 +21,8 @@ import {
   SLIDE_BURST_MAX_MS,
   SLIDE_BURST_MS_PER_ROOT_PX,
   SLIDE_MS,
+  SLIDE_SETTLE_EASE,
+  SLIDE_SETTLE_MS,
   STREAMING_SELECTOR,
   TAIL_ATTR,
   TAIL_BOTTOM_VAR,
@@ -213,6 +215,42 @@ export function createFollowGuard(options) {
   }
 
   /**
+   * End the slide by easing the offset it still carries back to zero.
+   *
+   * `cancel()` lands the column at translateY(0) in a single frame, and the
+   * offset on it is exactly how far the content is drawn below its final place:
+   * dropping it at once lifts the text by that many pixels between one frame and
+   * the next. Measured on a real reply, that is 89 upward moves of more than two
+   * pixels, the worst 31 px in one frame, from 14 cancels — and the host remounts
+   * its streaming container as the answer grows, so a remount reads as a shrink
+   * and ends the slide. Settling keeps the offset continuous: it still reaches
+   * zero, over SLIDE_SETTLE_MS instead of one frame, and the record stays in
+   * `slide` so a growth arriving mid-settle adds to what is left.
+   *
+   * The counters ride the same distance negated, as they do for a slide.
+   */
+  const settleSlide = () => {
+    const current = slide
+    if (current === null) return
+    const left = runCarried(current)
+    stopSlide()
+    // Below a pixel the move is invisible and an animation for it is noise.
+    if (!(left > 1)) return
+    const timing = { duration: SLIDE_SETTLE_MS, easing: SLIDE_SETTLE_EASE }
+    const columnSettle = current.column.animate(
+      [{ transform: `translateY(${left}px)` }, { transform: 'translateY(0px)' }],
+      timing,
+    )
+    const settleFrames = [{ transform: `translateY(${-left}px)` }, { transform: 'translateY(0px)' }]
+    const counters = (current.elements ?? []).map((element) => element.animate(settleFrames, timing))
+    const settled = { column: columnSettle, counters, elements: current.elements ?? [], from: left, duration: SLIDE_SETTLE_MS }
+    columnSettle.onfinish = () => {
+      if (slide === settled) slide = null
+    }
+    slide = settled
+  }
+
+  /**
    * The distance the slide still carries, read off its own clock and curve: no
    * style is read, and the number only ever shrinks because the curve's share
    * does.
@@ -325,7 +363,9 @@ export function createFollowGuard(options) {
     )
     const counterFrames = [{ transform: `translateY(${-from}px)` }, { transform: 'translateY(0px)' }]
     const counters = countersToAnimate.map((element) => element.animate(counterFrames, timing))
-    const current = { column: columnSlide, counters, from, duration }
+    // The elements are kept beside their animations: a settle has to animate the
+    // same boxes again, and an Animation has no `animate` of its own.
+    const current = { column: columnSlide, counters, elements: countersToAnimate, from, duration }
     columnSlide.onfinish = () => {
       if (slide === current) slide = null
     }
@@ -489,8 +529,9 @@ export function createFollowGuard(options) {
       const delta = box - slideHeight
       slideHeight = box
       // A structural shrink moves the host's pin by the height that left. An
-      // offset from growth before it would add a second, downward move.
-      if (delta < 0) stopSlide()
+      // offset from growth before it would add a second, downward move, and the
+      // offset it still carries must not be dropped in one frame either.
+      if (delta < 0) settleSlide()
       // Any growth is slid, a burst included: startSlide's clamp bounds what a
       // glide carries, and a column the host replaced is no longer the one
       // watched here (slideSync re-subscribes when it changes).
@@ -534,9 +575,10 @@ export function createFollowGuard(options) {
           && record.target instanceof Element
           && record.target.matches(THINK_ROW_SELECTOR)
           && record.target.getAttribute(ROW_PHASE_ATTRIBUTE) !== RUNNING_STATE) {
-          // The row may shrink in this same batch. End its growth offset before
-          // that structural change paints; the resize subscription is the backup.
-          stopSlide()
+          // The row may shrink in this same batch. Its growth offset settles
+          // ahead of that structural change instead of being dropped in a frame;
+          // the resize subscription is the backup.
+          settleSlide()
         }
         continue
       }
@@ -544,8 +586,8 @@ export function createFollowGuard(options) {
         if (!(node instanceof Element)) continue
         if (node.matches(CHAT_RUNNING_SELECTOR) || node.querySelector(CHAT_RUNNING_SELECTOR) !== null) {
           // The live row leaving is the stream's structural boundary. Its last
-          // growth offset ends in this mutation batch, ahead of the next paint.
-          stopSlide()
+          // growth offset settles from this mutation batch, ahead of the paint.
+          settleSlide()
           break
         }
       }

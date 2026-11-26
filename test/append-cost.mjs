@@ -194,6 +194,7 @@ const runArm = async (mode, batches, gapMs) => {
     window.__timed = 0
     cost.active = true
     const node = answer.firstChild
+    const startedAt = performance.now()
     for (let batch = 0; batch < ${batches}; batch += 1) {
       // An element per batch, not a bare text node: the theme observer watches
       // childList, and the host's markdown layer mounts elements as tokens
@@ -206,6 +207,7 @@ const runArm = async (mode, batches, gapMs) => {
       await sleep(${gapMs})
     }
     await sleep(600)
+    const elapsedMs = Math.round(performance.now() - startedAt)
     cost.active = false
     answer.removeAttribute('data-streaming')
     await sleep(300)
@@ -218,6 +220,7 @@ const runArm = async (mode, batches, gapMs) => {
       mode: ${JSON.stringify(mode)},
       batches: ${batches},
       gapMs: ${gapMs},
+      elapsedMs,
       callbacks: window.__timed,
       themeCalls: list.length,
       themeTotal: Math.round(list.reduce((sum, v) => sum + v, 0) * 10) / 10,
@@ -247,7 +250,7 @@ for (const mode of ARMS) {
 console.log('\nsummary:')
 for (const [key, value] of Object.entries(results)) {
   if (value.error !== undefined) { console.log(key, value.error); continue }
-  console.log(`${key.padEnd(20)} callbacks ${String(value.callbacks).padStart(4)}  themeCalls ${String(value.themeCalls).padStart(4)}  themeTotal ${String(value.themeTotal).padStart(8)}ms  p95 ${String(value.themeP95).padStart(6)}  styleCalls ${String(value.styleCalls).padStart(4)}  styleMs ${String(value.styleMs).padStart(7)}`)
+  console.log(`${key.padEnd(20)} elapsed ${String(value.elapsedMs).padStart(6)}ms  callbacks ${String(value.callbacks).padStart(4)}  themeCalls ${String(value.themeCalls).padStart(4)}  themeTotal ${String(value.themeTotal).padStart(8)}ms  p95 ${String(value.themeP95).padStart(6)}  styleMs ${String(value.styleMs).padStart(7)}`)
 }
 
 let all = {}

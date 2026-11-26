@@ -1,6 +1,6 @@
 {
   "name": "dsh-stream-motion",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Stream motion for DeepSeek Harness: characters fade in as an answer arrives, the chat area's follow is slid on the compositor instead of jumping, and thinking and tool rows roll their height as they open and close.",

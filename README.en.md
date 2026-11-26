@@ -70,11 +70,18 @@ reader's eye stays on the same line instead of being kicked up on every burst.
 The live turn's row is pinned to the scroller's bottom and would ride that
 offset, so it gets the same slide reversed in the same frame and stands still.
 
-**The hand-back.** The chat area's follow is lost at a few moments — a tool row
-mounting, a thinking row leaving `running`, a fold glide landing, a session
-switch, history being restored. The host turns its own follow off on any write
-inside its 500 ms sampling window and leaves one way back: the back-to-end button
-it renders only while off. The guard presses that button for you.
+**The hand-back.** The chat area's follow is lost at a few moments — a fold glide
+landing, a session switch, history being restored, and the reader's own return
+after scrolling away. The host turns its own follow off on any write inside its
+500 ms sampling window and leaves one way back: the back-to-end button it renders
+only while off. The guard presses that button for you.
+
+The structural moments inside a stream — a tool row mounting, a thinking row
+leaving `running`, a new flow block arriving — need **no** hand-back: the host
+keeps its own follow through them. Upstream measured this on the real host — with
+the skin's follow off, a streaming turn lost zero host frames; with it on, that
+hand-back pressed the button zero times. Only the fold's and the reader's own
+hand-backs remain here.
 
 The host puts that button in the column's right gutter, centred over the
 conversation. This package moves it outside the composer's top-right corner —
@@ -131,17 +138,17 @@ is the element the text hangs off — never "anything under the streaming block"
 because a descendant-combinator subject re-matches every element below it on
 each batch, which measures as the whole page's style recalc while a stream runs.
 
-The slide is an `Animation` on the flow column: `translateY(growth)` to
+The slide is an `Animation` on the flow column: `translateY(distance)` to
 `translateY(0)` on `cubic-bezier(0.22, 0.61, 0.36, 1)`, timed to the gap the last
 two pieces kept (capped at 240 ms); a single commit bigger than the screen is
 timed by its distance instead (`sqrt(px) * 12`, capped at 620 ms), because a
-fixed token would cross the whole screen in a few frames. Each piece of growth
-starts its own
-additive animation (`composite: 'add'`), so the offsets sum instead of being
-replaced — restarting a replace-mode animation snaps the painted offset back to
-the value computed for the restart, and that snap is itself a visible jump.
-Additive animations stay off the compositor; the price buys the absence of a
-bounce.
+fixed token would cross the whole screen in a few frames. **One replace-mode
+animation runs at a time**: a new growth restarts it from the distance the old one
+had not paid back plus the new one, so the painted offset continues from where the
+frame before it stood, only ever moving upward — and a replace-mode transform
+stays on the compositor instead of repainting on the main thread every frame.
+(Additive composition sums the same numbers and cannot bounce, but an additive
+transform stays off the compositor.)
 
 The distance comes from the scroll position, not from the size report. The host
 writes the end from its own scheduler, and that write can land between two size
@@ -237,12 +244,12 @@ package needs no theme; every mark renamed from `dsh-claude-*` to
 `dsh-stream-motion*`; the two body gates split so a browser with only one of the
 two APIs still gets the half it can run; the `::highlight()` rule subjects widened
 from one descendant selector to two, so a container whose own text node is the
-streamed text fades too; the slide made additive and started from the scroller's
-scroll event; the door reading its body from the root's own children when no
-`aria-controls` names it; the door narrowed to the disclosure row and to a tool
-group that is actually capped, since the original also carries the theme's
-message fold, process summary and reasoning stream, none of which were ported;
-and the smoothed press added, which the original does not have — there the
+streamed text fades too; the slide started from the scroller's scroll event rather
+than from the size batch alone; the door reading its body from the root's own
+children when no `aria-controls` names it; the door narrowed to the disclosure row
+and to a tool group that is actually capped, since the original also carries the
+theme's message fold, process summary and reasoning stream, none of which were
+ported; and the smoothed press added, which the original does not have — there the
 back-to-end button still teleports.
 
 New here, not derived: `package.json`, `cordis.patch.yml`, `src/host.js`,

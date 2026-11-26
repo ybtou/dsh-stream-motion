@@ -26,17 +26,25 @@ bottom of this file.
   to two, so a container whose own text node is the streamed text fades too.
 - The smoothed press was added. The original does not have it: there the
   back-to-end button still teleports.
-- The slide is additive (`composite: 'add'`, one animation per piece of growth)
-  and is started from the scroller's scroll event rather than from the size
-  batch. The original restarts one replace-mode animation per growth, which
-  snaps the painted offset back to the restart's computed value and shows as a
-  bounce when the host's own write lands a frame away from the size report.
+- The slide is started from the scroller's scroll event rather than from the size
+  batch alone: the host's write can land between two size reports, and waiting
+  for the next report means the growth has already painted.
+- The slide now matches upstream 0.22.3: one replace-mode animation at a time,
+  restarted from the distance the previous one had not paid back. This port
+  briefly used additive composition (`composite: 'add'`) to avoid the restart
+  snap; upstream's D95 keeps the transform on the compositor instead, and the
+  measured bounce came from the pin's timing, not from replace mode.
 - The door glide reads the body from the root's own children when a control
   names no `aria-controls`, so the disclosure shape without one is covered too.
 - The door glide was narrowed to the disclosure row and to a tool group that is
   actually capped. The original also carries the theme's message fold, process
   summary and reasoning stream; those were not ported, and a tool group without
   a height cap is left to the host instead of being animated to its own height.
+- Synced from upstream 0.22.3: size observation is routed by target (`src/bus.js`
+  keeps a `routes` map, so a batch looks up each entry's subscriptions instead of
+  scanning every subscription), and the structural moments inside a stream no
+  longer hand the follow back — the host keeps its own follow through them, so
+  the guard has only the fold's and the reader's own hand-backs left.
 
 ## What is original to this package
 

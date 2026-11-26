@@ -2,20 +2,14 @@ import { observeMarker, observeMatches, observeSize, subscribeMutations } from '
 import { requestFrame } from '../frame.js'
 import { easeValueAt } from './ease.js'
 import {
-  CHAT_CALL_SELECTOR,
   CHAT_RUNNING_SELECTOR,
   COMPOSER_CARD_SELECTOR,
   CONVERSATION_SCROLL_SELECTOR,
   DISCLOSURE_HEADER_SELECTOR,
   DISCLOSURE_ROW_SELECTOR,
   EXPANDED_ATTRIBUTE,
-  FLOW_BLOCK_SELECTOR,
-  FOLLOW_ACTIVITY_GRACE_MS,
   FOLLOW_HOLD_ATTR,
-  FOLLOW_MIN_INTERVAL_MS,
   FOLLOW_TAIL_AIR_PX,
-  FOLLOW_THRESHOLD_PX,
-  FOLLOWING_TAIL_ATTRIBUTE,
   FOLLOWING_TAIL_SELECTOR,
   GLIDE_EASE,
   PROCESS_BODY_SELECTOR,
@@ -36,7 +30,6 @@ import {
 import { conversationColumn, conversationScroller, findFollowTailButton } from './chat-dom.js'
 import {
   SCROLL_EASE_LEAD_PX,
-  handBackFollow,
   joinScrollOwner,
   readerHolds,
   readerScrollPosition,
@@ -49,19 +42,15 @@ import { createProcessFollow } from './process-follow.js'
  * Enhanced follow and the capped process group's follow. Both ride one switch:
  * they are the two halves of the same hand-back.
  *
- * The guard that watches for the moments that lose the host's follow is below;
- * the hand-back itself and every position write are the scroll owner's; the
- * catch-up inside a capped body is in process-follow.js.
+ * The host keeps its own follow through a stream, so this guard has none to
+ * hand back at the structural moments; what it does own is the slide that
+ * carries each growth's displacement, and the reader's own hold. The hand-back
+ * itself and every position write are the scroll owner's; the catch-up inside a
+ * capped body is in process-follow.js.
  */
 
-/** One tool call's row, and one flow block, in one selector: a new node either way. */
-export const FOLLOW_STRUCTURE_SELECTOR = `${FLOW_BLOCK_SELECTOR}, ${CHAT_CALL_SELECTOR}`
 /** Content is streaming: the host writes both marks, and only then is there a follow to lose. */
 export const FOLLOW_RUNNING_SELECTOR = `${STREAMING_SELECTOR}, ${SHIMMER_SELECTOR}`
-
-/** A fold glide in flight is waited out; after this many waits the round is dropped. */
-const FOLLOW_FOLD_WAIT_MS = 150
-const FOLLOW_FOLD_WAIT_ATTEMPTS = 4
 
 /** The conversation's own composer card: the lowest of the cards on the page. */
 function conversationComposerCard(cards) {
@@ -129,21 +118,8 @@ function writeTailPlacement(marked, placement) {
 export function createFollowGuard(options) {
   const { foldBusy, submissionHeld, motionReduced } = options
   const leaveOwner = joinScrollOwner()
-  /** When the last hand-back really landed, for the throttle. */
-  let lastEnsureAt = 0
-  /** When structure last changed, for the grace. */
-  let lastActivityAt = 0
-  let scanQueued = false
-  /** Set by the teardown: no pass is queued and no retry is waiting. */
+  /** Set by the teardown: nothing below may write after the feature is off. */
   let stopped = false
-  /** Cancels the frame a seen moment waits on. */
-  let cancelScan = null
-  /** The wait a fold glide put the hand-back on, so the teardown can drop it. */
-  let foldWaitTimer = null
-  /** This batch of mutations held a structural moment / the follow being turned off. */
-  let structureSeen = false
-  let guardSeen = false
-  let tailReadWanted = false
 
   /** Whether the reader is reading up there right now. */
   const readerAway = () => {
@@ -169,10 +145,8 @@ export function createFollowGuard(options) {
   let slideScrollTop = null
   /** The held position's revision at that batch: new travel alone may use the owner's absolute position. */
   let slideReaderRevision = 0
-  /** Whether the current conversation column has ever stood at or followed the tail. */
-  let seenAtTail = false
-  /** The additive slides running now, each carrying one growth's distance back to zero. */
-  const runs = []
+  /** The one slide in flight, carrying the summed distance back to zero. */
+  let slide = null
   /** The column the hold mark is on, or null while no door holds it. */
   let heldColumn = null
   /** Whether the size subscription's first report for the current column has been taken as its baseline. */
@@ -209,13 +183,11 @@ export function createFollowGuard(options) {
     return runningMarks.all().some((mark) => column.contains(mark))
   }
 
-  /** Whether work counts as in progress right now. */
-  const running = () => streaming() || performance.now() - lastActivityAt <= FOLLOW_ACTIVITY_GRACE_MS
-
   /**
-   * Whether this growth is slid. The gate is the streaming mark itself rather
-   * than the guard's wider "work in progress" window: the structural moments
-   * that window exists for are the hand-back's business.
+   * Whether this growth is slid. The gate is the streaming mark itself: the host
+   * keeps its own follow through the structural moments around a stream — a tool
+   * call row arriving, a thinking row ending, a new flow block — so those need no
+   * hand-back and no wider "work in progress" window (D95).
    */
   const slideWanted = (column) => {
     if (motionReduced()) return false
@@ -232,37 +204,22 @@ export function createFollowGuard(options) {
     return column.closest(FOLLOWING_TAIL_SELECTOR) !== null
   }
 
-  /** End every running slide where it is: the column and its counter-slid elements land at rest together. */
+  /** End the slide where it is: the column and its counter-slid elements land at rest together. */
   const stopSlide = () => {
-    if (runs.length === 0) return
-    for (const run of runs) {
-      run.column.cancel()
-      for (const counter of run.counters) counter.cancel()
-    }
-    runs.length = 0
-  }
-
-  /** Whether the conversation scroller currently stands at or follows its tail. */
-  const noteTailIfNear = (scroller) => {
-    if (seenAtTail || scroller === null) return
-    if (scroller.querySelector(FOLLOWING_TAIL_SELECTOR) !== null
-      || scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= FOLLOW_THRESHOLD_PX) {
-      seenAtTail = true
-    }
+    if (slide === null) return
+    slide.column.cancel()
+    for (const counter of slide.counters) counter.cancel()
+    slide = null
   }
 
   /**
-   * The distance the running slides still carry, summed off each one's own clock
-   * and curve: no style is read, and the total only ever shrinks because each
-   * run's share does.
+   * The distance the slide still carries, read off its own clock and curve: no
+   * style is read, and the number only ever shrinks because the curve's share
+   * does.
    */
-  const slideCarried = () => {
-    let carried = 0
-    for (const run of runs) carried += runCarried(run)
-    return carried
-  }
+  const slideCarried = () => (slide === null ? 0 : runCarried(slide))
 
-  /** One run's remaining distance. */
+  /** The slide's remaining distance. */
   const runCarried = (run) => {
     const startedAt = run.column.startTime
     // An animation that has not begun — the frame it was made in has not
@@ -330,16 +287,16 @@ export function createFollowGuard(options) {
   /**
    * Put the column back down by this frame's growth and slide it to rest.
    *
-   * Each growth gets its own additive animation running from its own distance to
-   * zero, so the offsets simply sum: the total only ever shrinks, and a piece
-   * arriving mid-slide adds to a number that is already draining instead of
-   * replacing it. A replace-mode animation cannot do this — restarting one snaps
-   * the painted offset back to the value computed for the restart, which is a
-   * jump of whatever the previous frame had already paid back.
+   * One replace-mode animation runs at a time, and a growth arriving mid-slide
+   * restarts it from the distance the old one had not yet paid back plus the new
+   * one: the painted offset therefore continues from where the frame before it
+   * stood, and the column only ever moves upward. Additive composition would sum
+   * the same numbers, but an additive transform stays off the compositor and the
+   * slide would be repainted on the main thread every frame (D95).
    *
-   * The lead is a ceiling on the summed distance, not on one piece, so a burst is
-   * glided as far as the ceiling and no farther. The live turn's row is pinned to
-   * the scroller's bottom and would ride the column's offset, so it gets the same
+   * The lead is a ceiling on the distance, not on one piece, so a burst is glided
+   * as far as the ceiling and no farther. The live turn's row is pinned to the
+   * scroller's bottom and would ride the column's offset, so it gets the same
    * distances negated, started in the same frame: the two cancel and it stands.
    */
   const startSlide = (column, scroller, grew) => {
@@ -347,17 +304,21 @@ export function createFollowGuard(options) {
     // The lead bounds how far the view may be rewound: a commit bigger than that
     // is a whole screenful arriving at once, and pulling it all back would be a
     // bigger move than the jump it replaces. The excess lands where the host put
-    // it — still upward, still monotonic — and the lead is glided.
-    const room = SCROLL_EASE_LEAD_PX - carried
-    if (room <= 0.5) return
-    const from = Math.min(room, grew)
+    // it — still upward, still monotonic — and the lead is glided. With no room
+    // left under the lead the growth is left where the host put it, which is the
+    // same direction the slide was already travelling.
+    if (carried >= SCROLL_EASE_LEAD_PX - 0.5) return
+    // The restart carries what the old animation had not paid back plus the new
+    // growth: the painted offset continues from where the last frame stood.
+    const from = Math.min(SCROLL_EASE_LEAD_PX, carried + grew)
     if (from <= 0) return
     const countersToAnimate = []
     const pinned = runningRows.all().find((row) => column.contains(row)) ?? null
     if (pinned !== null) countersToAnimate.push(pinned)
     for (const header of stuckThinkHeaders(column, scroller)) countersToAnimate.push(header)
     const duration = slideDuration(from)
-    const timing = { duration, easing: GLIDE_EASE, composite: 'add' }
+    stopSlide()
+    const timing = { duration, easing: GLIDE_EASE }
     const columnSlide = column.animate(
       [{ transform: `translateY(${from}px)` }, { transform: 'translateY(0px)' }],
       timing,
@@ -366,10 +327,9 @@ export function createFollowGuard(options) {
     const counters = countersToAnimate.map((element) => element.animate(counterFrames, timing))
     const current = { column: columnSlide, counters, from, duration }
     columnSlide.onfinish = () => {
-      const index = runs.indexOf(current)
-      if (index >= 0) runs.splice(index, 1)
+      if (slide === current) slide = null
     }
-    runs.push(current)
+    slide = current
   }
 
   /** Take the hold mark off the column carrying it. */
@@ -421,7 +381,6 @@ export function createFollowGuard(options) {
     slideHeight = 0
     slideScrollTop = null
     slideReaderRevision = 0
-    seenAtTail = false
     // A new column is a new conversation: the pace the old one streamed at is no
     // reading of how fast this one's pieces arrive.
     grewAt = 0
@@ -549,7 +508,6 @@ export function createFollowGuard(options) {
       }
     }
     const scroller = column === null ? null : column.closest(CONVERSATION_SCROLL_SELECTOR)
-    noteTailIfNear(scroller)
     holdCheck()
     // The host pins the end from its own observer, in this same batch and before
     // this callback (the subscription is rebuilt `afterHost`). Reading the
@@ -562,76 +520,6 @@ export function createFollowGuard(options) {
     if (readerAway()) holdGrowth(column, slideScrollTop, false)
   }
 
-  /**
-   * Hand this round's follow back. Three gates have to open: the position, the
-   * reader's intent and a fold glide in flight.
-   */
-  const ensure = (attempt) => {
-    if (stopped || readerAway()) return
-    const scroller = conversationScroller()
-    if (scroller === null) return
-    noteTailIfNear(scroller)
-    // A conversation opened onto a saved historical position has never followed the tail.
-    if (!seenAtTail) return
-    // More than a screen off the end is the reader reading higher up, not a
-    // follow that fell one step behind.
-    if (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop > scroller.clientHeight) return
-    // A fold glide is moving the height, and the position is its business until it lands.
-    if (foldBusy()) {
-      const tries = typeof attempt === 'number' ? attempt : 0
-      if (tries >= FOLLOW_FOLD_WAIT_ATTEMPTS) return
-      if (foldWaitTimer !== null) window.clearTimeout(foldWaitTimer)
-      foldWaitTimer = window.setTimeout(() => {
-        foldWaitTimer = null
-        ensure(tries + 1)
-      }, FOLLOW_FOLD_WAIT_MS)
-      return
-    }
-    const now = performance.now()
-    if (now - lastEnsureAt < FOLLOW_MIN_INTERVAL_MS) return
-    lastEnsureAt = now
-    // A hand-back in flight outlives the frame it began in, so it is told the
-    // feature is gone rather than only that the reader is still up there.
-    handBackFollow({ stillWanted: () => !stopped && !readerAway() })
-  }
-
-  /** A batch of mutations is settled: decide whether to act. */
-  const settle = () => {
-    const structure = structureSeen
-    const guarded = guardSeen
-    structureSeen = false
-    guardSeen = false
-    // The guard side needs the extra "work in progress" test: the attribute
-    // going away can also be a session switch or history being restored.
-    if (!structure && !(guarded && running())) return
-    ensure(0)
-  }
-
-  const queue = () => {
-    if (scanQueued || stopped) return
-    scanQueued = true
-    // The hand-back reads the position and writes it in one go, in the scroll
-    // phase, while the frame's reads have left the layout settled.
-    cancelScan = requestFrame({
-      read() {
-        if (!tailReadWanted) return
-        tailReadWanted = false
-        noteTailIfNear(conversationScroller())
-      },
-      scroll() {
-        cancelScan = null
-        scanQueued = false
-        settle()
-      },
-    })
-  }
-
-  /** Whether a newly added node holds a flow block or a tool call row. */
-  const marksStructure = (node) => {
-    if (!(node instanceof Element)) return false
-    return node.matches(FOLLOW_STRUCTURE_SELECTOR) || node.querySelector(FOLLOW_STRUCTURE_SELECTOR) !== null
-  }
-
   const onRecords = (records) => {
     for (const record of records) {
       if (record.type === 'attributes') {
@@ -641,35 +529,16 @@ export function createFollowGuard(options) {
           if (record.target instanceof Element && record.target.hasAttribute(READER_HOLD_ATTR)) stopSlide()
           continue
         }
-        // The follow went from present to absent: the host just turned it off.
-        if (record.attributeName === FOLLOWING_TAIL_ATTRIBUTE) {
-          if (record.target instanceof Element && !record.target.hasAttribute(FOLLOWING_TAIL_ATTRIBUTE)) {
-            guardSeen = true
-            // Whether this was a follow that fell behind or a reader who is
-            // reading higher up is decided by the position, and this is the one
-            // moment it has to be read: the mark itself is gone, so the numeric
-            // reading is the only answer left.
-            if (!seenAtTail) tailReadWanted = true
-          }
-          continue
-        }
         // A thinking row leaving "running": the boundary of that piece of work.
         if (record.oldValue === RUNNING_STATE
           && record.target instanceof Element
           && record.target.matches(THINK_ROW_SELECTOR)
           && record.target.getAttribute(ROW_PHASE_ATTRIBUTE) !== RUNNING_STATE) {
-          lastActivityAt = performance.now()
-          structureSeen = true
           // The row may shrink in this same batch. End its growth offset before
           // that structural change paints; the resize subscription is the backup.
           stopSlide()
         }
         continue
-      }
-      for (const node of record.addedNodes) {
-        if (!marksStructure(node)) continue
-        lastActivityAt = performance.now()
-        structureSeen = true
       }
       for (const node of record.removedNodes) {
         if (!(node instanceof Element)) continue
@@ -681,26 +550,20 @@ export function createFollowGuard(options) {
         }
       }
     }
-    const before = slideColumn
+    // The host keeps its own follow through these moments — a tool call row
+    // arriving, a thinking row ending, a new flow block — so none of them asks
+    // for a hand-back (D95). The subscriptions below are the slide's only.
     if (records.some((record) => record.type !== 'attributes')) {
       slideSync()
       holdCheck()
-      // Read the tail at most once per frame, only for a different column or
-      // content arriving in this transcript. Mutations elsewhere never force
-      // layout in a conversation restored at its saved reading position.
-      const scroller = conversationScroller()
-      if (!seenAtTail && scroller !== null && (before !== slideColumn || records.some(
-        (record) => record.type !== 'attributes' && scroller.contains(record.target),
-      ))) tailReadWanted = true
     }
-    if (structureSeen || guardSeen || tailReadWanted) queue()
   }
 
   const stopMutations = subscribeMutations(document.body, {
     subtree: true,
     childList: true,
     characterData: true,
-    attributeFilter: [ROW_PHASE_ATTRIBUTE, FOLLOWING_TAIL_ATTRIBUTE, READER_HOLD_ATTR],
+    attributeFilter: [ROW_PHASE_ATTRIBUTE, READER_HOLD_ATTR],
     attributeOldValue: true,
   }, onRecords)
 
@@ -725,14 +588,7 @@ export function createFollowGuard(options) {
 
   return () => {
     document.removeEventListener('scroll', onScrollerScroll, true)
-    // First: a queued pass or a waiting retry would otherwise hand the position
-    // back after the feature is off, pressing the host's own back-to-end button.
     stopped = true
-    if (cancelScan !== null) cancelScan()
-    cancelScan = null
-    scanQueued = false
-    if (foldWaitTimer !== null) window.clearTimeout(foldWaitTimer)
-    foldWaitTimer = null
     stopMutations()
     if (stopSlideSize !== null) stopSlideSize()
     stopSlideSize = null

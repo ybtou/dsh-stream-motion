@@ -280,20 +280,68 @@ export function observeMarker(selector, onChange) {
   }
 }
 
-/** One resize observer per registry, its subscriptions in the order they were made. */
+/**
+ * One resize observer per registry, its subscriptions in the order they were made,
+ * and a route from each watched element to the subscriptions that asked for it.
+ *
+ * The route is what keeps a batch cheap: a subscription hears only its own
+ * entries, and finding them is a lookup per entry rather than a scan per
+ * subscription. A stream is the case that pays for it — the slide watches the
+ * column while the fade watches nothing, and the page can hold dozens of
+ * observers' worth of elements.
+ */
 function makeRegistry() {
-  return { observer: null, subscriptions: [], watchers: new Map() }
+  return { observer: null, subscriptions: [], watchers: new Map(), routes: new Map() }
 }
 
 const early = makeRegistry()
 const afterHost = makeRegistry()
 
+function route(registry, subscription, target) {
+  let subscriptions = registry.routes.get(target)
+  if (subscriptions === undefined) {
+    subscriptions = new Set()
+    registry.routes.set(target, subscriptions)
+  }
+  subscriptions.add(subscription)
+}
+
+function unroute(registry, subscription, target) {
+  const subscriptions = registry.routes.get(target)
+  if (subscriptions === undefined) return
+  subscriptions.delete(subscription)
+  if (subscriptions.size === 0) registry.routes.delete(target)
+}
+
 function makeSizeObserver(registry) {
   return new ResizeObserver((entries) => {
+    /** Each subscription's own slice of this batch, gathered in one pass over the entries. */
+    const matched = new Map()
+    for (const entry of entries) {
+      const subscriptions = registry.routes.get(entry.target)
+      if (subscriptions === undefined) continue
+      for (const subscription of subscriptions) {
+        const own = matched.get(subscription)
+        if (own === undefined) matched.set(subscription, [entry])
+        else own.push(entry)
+      }
+    }
+    // One subscriber heard this batch: no reason to walk the list at all.
+    if (matched.size === 1) {
+      for (const [subscription, own] of matched) {
+        if (!registry.subscriptions.includes(subscription)) continue
+        try {
+          subscription.callback(own)
+        } catch (error) {
+          reportError(error)
+        }
+      }
+      return
+    }
     for (const subscription of registry.subscriptions.slice()) {
-      if (!registry.subscriptions.includes(subscription)) continue
-      const own = entries.filter((entry) => subscription.lookup.has(entry.target))
-      if (own.length === 0) continue
+      const own = matched.get(subscription)
+      if (own === undefined || !registry.subscriptions.includes(subscription)) continue
+      // A failing subscription must not keep the rest of the batch from hearing it.
       try {
         subscription.callback(own)
       } catch (error) {
@@ -314,10 +362,11 @@ function makeSizeObserver(registry) {
 export function observeSize(targets, callback, options) {
   const registry = options?.afterHost === true ? afterHost : early
   const list = Array.isArray(targets) ? [...targets] : [targets]
-  const subscription = { targets: list, lookup: new Set(list), callback }
+  const subscription = { targets: list, callback }
   registry.subscriptions.push(subscription)
-  for (const target of subscription.targets) {
+  for (const target of list) {
     registry.watchers.set(target, (registry.watchers.get(target) ?? 0) + 1)
+    route(registry, subscription, target)
   }
   if (registry === afterHost) {
     // Made anew, so it is younger than the host's; every element is watched
@@ -325,10 +374,10 @@ export function observeSize(targets, callback, options) {
     // change.
     if (registry.observer !== null) registry.observer.disconnect()
     registry.observer = makeSizeObserver(registry)
-    for (const element of registry.watchers.keys()) registry.observer.observe(element)
+    for (const element of registry.routes.keys()) registry.observer.observe(element)
   } else {
     if (registry.observer === null) registry.observer = makeSizeObserver(registry)
-    for (const target of subscription.targets) {
+    for (const target of list) {
       // Watched again, so the new subscription hears the current size first.
       if (registry.watchers.get(target) > 1) registry.observer.unobserve(target)
       registry.observer.observe(target)
@@ -338,7 +387,8 @@ export function observeSize(targets, callback, options) {
     const at = registry.subscriptions.indexOf(subscription)
     if (at === -1) return
     registry.subscriptions.splice(at, 1)
-    for (const target of subscription.targets) {
+    for (const target of list) {
+      unroute(registry, subscription, target)
       const count = registry.watchers.get(target) - 1
       if (count > 0) {
         registry.watchers.set(target, count)
@@ -350,5 +400,6 @@ export function observeSize(targets, callback, options) {
     if (registry.subscriptions.length > 0) return
     if (registry.observer !== null) registry.observer.disconnect()
     registry.observer = null
+    registry.routes.clear()
   }
 }

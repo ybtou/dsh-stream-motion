@@ -2,8 +2,6 @@
 export const STREAMING_SELECTOR = '[data-streaming]'
 export const SHIMMER_SELECTOR = '[data-shimmer]'
 export const CHAT_FLOW_SELECTOR = '[data-chat-flow]'
-export const FLOW_BLOCK_SELECTOR = '[data-chat-flow-key]'
-export const CHAT_CALL_SELECTOR = '[data-chat-call-id]'
 export const CHAT_RUNNING_SELECTOR = '[data-chat-running]'
 export const THINK_ROW_SELECTOR = '[data-variant="think"]'
 export const CONVERSATION_SCROLL_SELECTOR = '[data-conversation-scroll]'
@@ -14,7 +12,6 @@ export const PROCESS_EXPANDED_MODE_ATTRIBUTE = 'data-group-expanded-mode'
 export const DISCLOSURE_HEADER_SELECTOR = '[data-disclosure-header]'
 export const DISCLOSURE_ROW_SELECTOR = '[data-disclosure-row]'
 export const EXPANDED_ATTRIBUTE = 'data-expanded'
-export const FOLLOWING_TAIL_ATTRIBUTE = 'data-chat-following-tail'
 export const FOLLOWING_TAIL_SELECTOR = '[data-chat-following-tail]'
 export const ROW_PHASE_ATTRIBUTE = 'data-state'
 export const RUNNING_STATE = 'running'
@@ -64,10 +61,6 @@ export const FOLD_SHUT_CONFIRM_FRAMES = 3
 /** The margin past a roll in which the position still belongs to the animation. */
 export const FOLD_BUSY_GRACE_MS = 50
 
-/** Two hand-backs never land closer than this, so a run of tool calls cannot pin the position. */
-export const FOLLOW_MIN_INTERVAL_MS = 200
-/** A structural change this recent still counts as work in progress. */
-export const FOLLOW_ACTIVITY_GRACE_MS = 2000
 /** How long the stream slide stands down after a submission arrives. */
 export const SUBMISSION_HOLD_MS = 1200
 /** How many times a hand-back looks again, and the gap between two looks. */

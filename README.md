@@ -152,9 +152,9 @@ body 门拆开，于是只有其中一个 API 的浏览器仍能拿到它能跑�
 `src/{motion,session,stylesheet,params}.js`、`build.mjs`、`icon.svg`、`locale/`，
 以及四个测试工装。
 
-上游的 MIT 声明全文保留在 [LICENSE](LICENSE)。
+上游的 MIT 声明全文保留在 [NOTICE.md](NOTICE.md)。
 
 ## 协议
 
 MIT。Copyright (c) 2026 ybtou。部分内容移植自 dsh-claude-style，
-Copyright (c) 2026 Nwflower，同为 MIT —— 见 [LICENSE](LICENSE)。
+Copyright (c) 2026 Nwflower，同为 MIT —— 见 [LICENSE](LICENSE) 与 [NOTICE.md](NOTICE.md)。

@@ -200,9 +200,10 @@ New here, not derived: `package.json`, `cordis.patch.yml`, `src/host.js`,
 `src/client.js`, `src/{motion,session,stylesheet,params}.js`, `build.mjs`,
 `icon.svg`, `locale/`, and all four test harnesses.
 
-The upstream MIT notice is reproduced in full in [LICENSE](LICENSE).
+The upstream MIT notice is reproduced in full in [NOTICE.md](NOTICE.md).
 
 ## License
 
 MIT. Copyright (c) 2026 ybtou. Portions derived from dsh-claude-style,
-Copyright (c) 2026 Nwflower, also MIT — see [LICENSE](LICENSE).
+Copyright (c) 2026 Nwflower, also MIT — see [LICENSE](LICENSE) and
+[NOTICE.md](NOTICE.md).

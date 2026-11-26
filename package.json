@@ -13,7 +13,7 @@
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
-  "files": ["lib/host.js", "lib/client.js", "cordis.patch.yml", "locale/*.json", "README.md", "README.en.md", "LICENSE", "icon.svg"],
+  "files": ["lib/host.js", "lib/client.js", "cordis.patch.yml", "locale/*.json", "README.md", "README.en.md", "LICENSE", "NOTICE.md", "icon.svg"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "immediately": true, "inject": [] }

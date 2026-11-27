@@ -272,18 +272,38 @@ export function createFollowGuard(options) {
   const settleSlide = () => {
     const current = slide
     if (current === null) return
+    // A settle already running ends at rest by itself, from the offset it was
+    // made with. The shrink that starts one arrives again on the frame after it
+    // — the scroll it moves is read by the same callback — and rebuilding the
+    // animation each time restarts its clock from a shorter distance, so the
+    // offset never finishes its own curve. Measured before this guard: one
+    // settle made and cancelled on every frame of the fall.
+    if (current.settling === true) return
     const left = runCarried(current)
     stopSlide()
     // Below a pixel the move is invisible and an animation for it is noise.
     if (!(left > 1)) return
     const timing = { duration: SLIDE_SETTLE_MS, easing: SLIDE_SETTLE_EASE }
-    const columnSettle = current.column.animate(
+    // The element, not the animation: `current.column` is the Animation the
+    // slide made, and an Animation has no `animate` of its own. Asking it for
+    // one threw inside the size callback, so every settle was lost — and the
+    // offset it was meant to carry went with it, in one frame.
+    const columnSettle = current.target.animate(
       [{ transform: `translateY(${left}px)` }, { transform: 'translateY(0px)' }],
       timing,
     )
     const settleFrames = [{ transform: `translateY(${-left}px)` }, { transform: 'translateY(0px)' }]
     const counters = (current.elements ?? []).map((element) => element.animate(settleFrames, timing))
-    const settled = { column: columnSettle, counters, elements: current.elements ?? [], from: left, duration: SLIDE_SETTLE_MS }
+    const settled = {
+      column: columnSettle,
+      counters,
+      target: current.target,
+      elements: current.elements ?? [],
+      from: left,
+      duration: SLIDE_SETTLE_MS,
+      ease: SLIDE_SETTLE_EASE,
+      settling: true,
+    }
     columnSettle.onfinish = () => {
       if (slide === settled) slide = null
     }
@@ -308,8 +328,12 @@ export function createFollowGuard(options) {
     if (linear >= 1) return 0
     // The curve the animation paints with, not the linear share of its duration:
     // with the two mixed up, every restart re-inflates the distance the frame
-    // before it had already travelled.
-    return run.from * (1 - easeValueAt(GLIDE_EASE, linear))
+    // before it had already travelled. A settle paints with a different curve
+    // from a slide, and reading a settle's clock with the slide's curve
+    // understates what it has paid back — 0.31 of the distance at a fifth of the
+    // way through — so a growth landing there restarts the slide from a smaller
+    // number and the column lands above the frame before it.
+    return run.from * (1 - easeValueAt(run.ease ?? GLIDE_EASE, linear))
   }
 
   /**
@@ -405,7 +429,7 @@ export function createFollowGuard(options) {
     const counters = countersToAnimate.map((element) => element.animate(counterFrames, timing))
     // The elements are kept beside their animations: a settle has to animate the
     // same boxes again, and an Animation has no `animate` of its own.
-    const current = { column: columnSlide, counters, elements: countersToAnimate, from, duration }
+    const current = { column: columnSlide, counters, target: column, elements: countersToAnimate, from, duration }
     columnSlide.onfinish = () => {
       if (slide === current) slide = null
     }
@@ -514,7 +538,14 @@ export function createFollowGuard(options) {
     if (previous === null || readerMoved) return
     const pinned = scrollTop - previous
     if (pinned < 0) {
-      stopSlide()
+      // A shrink moves the host's pin back by the height that left. The offset
+      // the column still carries is the distance its content is drawn below its
+      // final place, so dropping it here lifts the text by that much between one
+      // frame and the next — measured at 268 px in a single frame on the harness
+      // when a growth landed mid-settle. Settling reaches the same rest over
+      // SLIDE_SETTLE_MS instead, and a settle already running continues from
+      // where it was painted.
+      settleSlide()
       return
     }
     if (pinned === 0) return

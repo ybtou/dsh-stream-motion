@@ -11,9 +11,122 @@
 
 | 版本 | 日期 | 提交 | 主题 |
 | --- | --- | --- | --- |
+| 0.2.2 | 2026-11-27 | 未提交 | 抽搐：settle 从来没有真正建起来过 |
 | 0.2.1 | 2026-11-27 | `2c3e28c` | 时间线遮挡：按钮锚到整个输入区，而不是卡片自己 |
 | 0.2.0 | 2026-11-27 | `5ff02bc` | 滑移被提前结束时缓动收尾；颜色读取移出 mutation 回调 |
 | 0.1.0 | 2026-11-26 | `fdbfd05` | 首次发布：逐字淡入、滑移跟随、行高卷动 |
+
+---
+
+## 0.2.2 — 抽搐：settle 从来没有真正建起来过
+
+**提交**：未提交。版本号 `package.json:3` = `0.2.2`。
+
+### 现象
+
+用户在**含有多轮对话的会话**里，总结输出阶段看到「抽搐」——内容上下跳动。单轮新会话不明显。
+
+### 证据
+
+**一、`settleSlide()` 每次调用都抛异常。** 0.2.0 引入的收尾把列的位移缓动到零，但它写的是：
+
+```js
+const columnSettle = current.column.animate(...)
+```
+
+而 `startSlide` 存进 `current.column` 的是 **`column.animate(...)` 返回的 `Animation` 对象**（`src/follow/follow.js:432` 的 `column: columnSlide`）。`Animation` 没有 `.animate` 方法，所以这一行必然 `TypeError`。异常从 `onSlideResize` 抛出，被 `src/frame.js` 的 `runFrame` 里 `try { task.x(now) } catch (error) { reportError(error) }` 吞掉——页面不报错，只是**同一回调里后面的 `holdCheck()` 和 `consumePin()` 全部不执行**，而位移已经在 `stopSlide()` 里被 `cancel()` 归零。一次取消 = 一次单帧上跳。
+
+这是 0.2.0 的回归：上一次修 settle 时只把 `counters` 换成 `elements: countersToAnimate`（因为 `Animation` 同样没有 `.animate`），漏掉了 `column` 这一处。**同一个错误在两处犯了两次，第二次没被工装发现。**
+
+**二、`runCarried` 用错曲线。** settle 用 `SLIDE_SETTLE_EASE`（`cubic-bezier(0.33, 0, 0.2, 1)`）绘制，但 `runCarried` 一律按 `GLIDE_EASE`（`cubic-bezier(0.22, 0.61, 0.36, 1)`）读进度。两条曲线逐点差：
+
+| t | glide | settle | 差 |
+| --- | --- | --- | --- |
+| 0.05 | 0.138 | 0.009 | 0.129 |
+| 0.10 | 0.271 | 0.039 | 0.232 |
+| 0.15 | 0.393 | 0.098 | 0.295 |
+| **0.20** | **0.501** | **0.192** | **0.309** |
+| 0.30 | 0.673 | 0.443 | 0.229 |
+| 0.50 | 0.873 | 0.791 | 0.082 |
+| 0.90 | 0.997 | 0.994 | 0.002 |
+
+settle 走到 1/5 处时，按 glide 读会认为已经还了 0.501，实际只还了 0.192 —— 剩余距离少算 0.309×`from`。增长在这一刻到来，`startSlide` 从更小的数重启，列落到上一帧之上。
+
+**三、`consumePin()` 的负 pin 把刚建的 settle 立刻取消。** `onSlideResize` 在 `delta < 0` 时调 `settleSlide()`，紧接着**同一个回调里**的 `consumePin()` 读到收缩造成的负 pin，执行 `if (pinned < 0) { stopSlide(); return }`。
+
+### 改动
+
+`src/follow/follow.js` 五处：
+
+1. `startSlide` 的 `current` 加 `target: column`（元素本身）。
+2. `settleSlide` 改用 `current.target.animate(...)`。注释记下了原因：`Animation` 没有自己的 `animate`，向它要一个会在 size 回调里抛，于是每次 settle 都丢失，而它本该承载的位移一帧内跟着丢。
+3. `runCarried` 改成 `return run.from * (1 - easeValueAt(run.ease ?? GLIDE_EASE, linear))`，`settled` 带 `ease: SLIDE_SETTLE_EASE`。
+4. `consumePin()` 的 `if (pinned < 0)` 从 `stopSlide()` 改成 `settleSlide()`（实测单帧 268 px）。
+5. `settleSlide` 顶部加 `if (current.settling === true) return`，`settled` 带 `settling: true`。守卫的原因：一个已经在跑的 settle 会自己走到静止；触发它的那次收缩在下一帧还会再来一次（移动的 scroll 被同一回调读到），每次重建都从更短的距离重新起表，位移永远走不完自己的曲线。**加守卫之前实测：下落的每一帧都新建一个 settle 又取消一个。**
+
+### 验证
+
+**`test/settle-probe.mjs`（新增，已纳入 `npm test`）**：headless Chrome + `test/harness.html?hostpin`。给 `Element.prototype.animate` 打桩，对列上的每个动画记 `ledger`（`made` 带 `carried`/`from`/`dur`/`ease`，`cancel` 带 `carried`/`now`/调用栈），`carried` 在 `animate` 被调用前与 `cancel` 被调用后各读一次真实 `translateY`。序列：40 个 filler → 建 `[data-streaming]` 20px → 涨到 320px → **45ms 后**塌回 20px（让收缩落在滑动途中）→ 60ms 后涨到 220px → 静置 500ms。
+
+四条断言，修复后 **4/4 通过**：
+
+- `bundle applies in the harness loader`
+- `the content never moves back down in a frame`（`worstBack 0`、`reversals 0`）
+- `a shrink while an offset is carried makes a settle`（3 个 settle）
+- `every handover keeps the offset it took over`（`carried` 与下一个 `from` 逐个相等）
+
+修复后的 ledger（8 个动画、3 个 settle），每次交接的 `carried` 与 `from` 完全相等：
+
+```
+#1 carried=0       from=translateY(899px)
+#2 carried=899     from=translateY(1200px)
+#3 carried=1067.2  from=translateY(1087.19px)
+#4 carried=721.34  from=translateY(721.34px)   dur=320  cubic-bezier(0.33, 0, 0.2, 1)
+#5 carried=1.54    from=translateY(298.54px)
+#6 carried=88.86   from=translateY(88.86px)    dur=320  cubic-bezier(0.33, 0, 0.2, 1)
+#7 carried=46.74   from=translateY(235.74px)
+#8 carried=23.79   from=translateY(23.79px)    dur=320  cubic-bezier(0.33, 0, 0.2, 1)
+```
+
+**真实多轮会话（`node test/bounce-ab.mjs 9501 fix-real "…"`，`flows: 37`）**：
+
+```
+seconds 28.3  samples 5309  framesWithOffset 1234
+visualJumps 668  visualDown 0  visualUp 668
+worstVisualDown 0  worstVisualUp -45.19
+cancels 29  cancelsWithDistance 26  snaps 254  boundaries 0
+biggestCancels left = 220 / 217 / 210 / 160
+```
+
+`visualDown` 恒为 0：内容从未向下移动。`cancels 29` 说明真实会话里滑移仍被频繁提前结束（宿主反复重挂流式容器），但每次都由 settle 接住，不再丢位移。
+
+历史对照（同一脚本、同一提示词，`worstVisualUp` 是单调上移的最大单帧，不是跳变）：
+
+| 标签 | 秒 | worstVisualUp | cancels | cancelsWithDistance | 最大 left |
+| --- | --- | --- | --- | --- | --- |
+| `base-true`（0.1.0 行为） | 15.5 | -45.09 | 25 | 24 | 203 |
+| `bounce-fix2` | 17.1 | -17.28 | 23 | 19 | 149 |
+| `fix-b` | 23.2 | -24.44 | 22 | 19 | 142 |
+| `fix-real`（本版） | 28.3 | -45.19 | 29 | 26 | 220 |
+
+**十个探针全绿**：reveal 19/19、follow 29/29、tail-press 6/6、jitter 4/4、race 2/2、burst 4/4、collapse 6/6、open 6/6、group 8/8、settle 4/4。
+
+### 踩到的坑
+
+**一、这个工装在修复前后的两个构建上都通过。** 用 `git stash push -- src/ lib/` 回到未修复的 `8e09eea` 跑，同样 `4/4` 通过、`worstBack 0`、`reversals 0`、抛出的异常为空。原因是收缩发生在滑动**已经跑完**之后（`cancel #2 carried=10.78`），此时 `runCarried` 返回 0，`settleSlide` 在 `left > 1` 之前就返回了，异常路径根本没走到。**修法：把收缩提前到滑动途中（`sleep(45)` 而不是 `sleep(70)`），并加一条「必须有 settle」的断言**——不看帧好不好看，只看「有位移要交出去的时候，有没有人接」。这条断言才是真正有区分力的那条。
+
+**二、判据错了三次。**
+- 第一版直接看 `translateY` 步长，报 `worstUp -89.42` —— 但滑移本来就该让内容上移。
+- 第二版改成看合成位移 `ty - scrollTop`，仍然错：探针脚本自己写了三处 `scroll.scrollTop = scroll.scrollHeight`，与 `harness.html` 的 hostpin 观察器同时钉住同一次增长，`y` 走了 +399 而内容只长 200。
+- 第三版把「快」当成错。`-53.3px` 那一帧经逐帧核对是 glide 曲线起步快（169ms 动画首帧走掉 27%），视觉位置单调上移。**抽搐是方向反转，不是速度**：内容先上移、又下落。判据最终改成数「内容向下移动」的帧。
+
+**三、塌陷会让浏览器钳制 `scrollTop`。** 内容从 320px 塌到 20px 时 `scrollHeight` 变小，浏览器把 `scrollTop` 夹回去，`ty - scrollTop` 出现一个 -299px 的假位移，看起来像巨大的向下跳动。**修法：采样带上 `scrollHeight`，高度变化的帧整帧跳过**（实测每轮 13–24 帧被跳过）。
+
+**四、PowerShell 正则批量改 `.mjs` 会把换行写进字符串字面量**，产生 `SyntaxError: Invalid or unexpected token`，还把文件尾部复制了一份。多行改动必须用编辑工具。
+
+**五、注入进页面的脚本里 `'\n'` 会被模板字符串展开成真换行。** 所有反斜杠写两遍（`split('\\n')`）。
+
+**六、`Animation.cancel` 被包装后 `animation.currentTime` 变 null**，要先读 `now` 再调原函数。
 
 ---
 
@@ -184,7 +297,7 @@ dropped@*        themeTotal     0ms
 
 ## 未决事项
 
-- **`main` 落后 `dev` 两个提交**（`main` = `fbba3dd`，`dev` = `2c3e28c`）。合并前要决定 `main` 是否也接受 0.2.x 的行为变更。
+- **`main` 落后 `dev` 三个提交**（`main` = `fbba3dd`，`dev` = 0.2.2 的提交）。合并前要决定 `main` 是否也接受 0.2.x 的行为变更。
 - **`dsh-session-manager` 的 `smApplyTheme` 与本插件 0.2.0 之前的写法是同一个错误**：它在 `document.body` 上挂 `{ childList: true, subtree: true }` 的无过滤观察器，每次流式追加都读几次 `getComputedStyle` —— 正是上面量到的「在脏样式上读」那 50–130ms。**尚未修**。修法与 `fbba3dd` 相同：把读推到 rAF。
 - **真实流式下「开启插件是否让用户少看到卡顿」仍未定论**。清理环境后按秒归一化的中位数显示开着更差约两倍（`over50` 1.50/秒 vs 0.75/秒、长任务 78.4ms/秒 vs 47.9ms/秒），但只有 4 轮、且各轮回复长度差四倍；离屏 headful 不参与合成，rAF 不受 60Hz 限制（实测 `p50 3.3ms`，约 300fps），「超过 50ms 的帧」统计的不是读者看到的那一帧。**需要更多轮次的 headless 数据才能下结论。**
 - **`test/append-cost.mjs` 与 `test/stream-ab.mjs` 未纳入 `npm test`**：它们是需要真实页面和端口的测量工装，不适合当回归测试跑。是否要留成长期工装、还是改造成可自动化的形状，待定。

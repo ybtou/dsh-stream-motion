@@ -33,7 +33,7 @@
 构建重新核一遍，再去动范围。
 
 非要在未验证版本上装，DSH 提供针对具体运行时的精确版本豁免 ——
-`dsh-stream-motion@0.2.1`，通过插件管理器或 `dsh plugin allow-version`。之后发生什么按未测处理。
+`dsh-stream-motion@0.2.2`，通过插件管理器或 `dsh plugin allow-version`。之后发生什么按未测处理。
 
 ## 安装
 
@@ -161,15 +161,18 @@ npm run build        # src/ -> lib/client.js + lib/host.js
 ## 测试
 
 ```bash
-npm test                            # 九个浏览器工装
+npm test                            # 十个浏览器工装
 node test/live.mjs                  # 对着正在运行的 DSH web app
 node test/fold-live.mjs             # 真实对话里的真实折叠
 ```
 
-九个工装通过 CDP 驱动无头 Chromium 跑一个假宿主页面，不需要装 DSH。其中六个是回归用的：
+十个工装通过 CDP 驱动无头 Chromium 跑一个假宿主页面，不需要装 DSH。其中七个是回归用的：
 `jitter-probe` 逐帧采样一个固定参照块，任何回升都算可见抖动；`race-probe` 让假宿主晚一帧
 才写末尾，专门抓「宿主写入与尺寸批次不同步」这一类竞态；`burst-probe` 一次提交塞进一屏以上
-的文字；`collapse-probe`、`open-probe`、`group-probe` 覆盖两种门形状的两个方向。
+的文字；`collapse-probe`、`open-probe`、`group-probe` 覆盖两种门形状的两个方向；
+`settle-probe` 给 `Element.prototype.animate` 打桩，记下每次动画交接前后列上真实的
+`translateY`，要求「有位移要交出去的时候必须有人接」—— 它抓的是位移在一帧里被丢掉，
+而丢掉之后帧本身看起来完全正常。
 
 两个 live 套件从运行中应用的日志里读 `?token=` 的 URL，驱动真实的聊天框。`live.mjs` 抓「宿主
 挪了位置」这一类形状变化；`fold-live.mjs` 打开一个真实会话，点真实的门，确认卷动真的发生在
@@ -234,7 +237,7 @@ entries 该发给谁，不再每个订阅扫全表）；流式期间的结构时
 
 新写、非移植：`package.json`、`cordis.patch.yml`、`src/host.js`、`src/client.js`、
 `src/{motion,session,stylesheet,params}.js`、`build.mjs`、`icon.svg`、`locale/`，
-以及九个测试工装与两个 live 套件。
+以及十个测试工装与两个 live 套件。
 
 上游的 MIT 声明全文保留在 [NOTICE.md](NOTICE.md)。
 

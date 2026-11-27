@@ -41,7 +41,7 @@ re-check the DOM marks in the table under "How it works" against the host's
 `dsh-client-ui-chat` build, before widening the range.
 
 To install anyway on an unverified version, DSH takes an explicit exact-version
-exemption for `dsh-stream-motion@0.2.1` on that runtime — through the plugin
+exemption for `dsh-stream-motion@0.2.2` on that runtime — through the plugin
 manager, or `dsh plugin allow-version`. Treat what happens next as untested.
 
 ## Install
@@ -230,18 +230,22 @@ between.
 ## Tests
 
 ```bash
-npm test                            # the nine browser harnesses
+npm test                            # the ten browser harnesses
 node test/live.mjs                  # against a running DSH web app
 node test/fold-live.mjs             # a real fold in a real conversation
 ```
 
-The nine harnesses drive a headless Chromium over CDP against a fake host page,
-so they need no DSH install. Six of them are regressions: `jitter-probe` samples
+The ten harnesses drive a headless Chromium over CDP against a fake host page,
+so they need no DSH install. Seven of them are regressions: `jitter-probe` samples
 a fixed marker block every frame, where any rise counts as visible shaking;
 `race-probe` makes the fake host write the end one frame late, to catch the class
 of race between the host's write and the size batch; `burst-probe` hands the view
 more than a screenful in one commit; `collapse-probe`, `open-probe` and
-`group-probe` cover both directions of both door shapes.
+`group-probe` cover both directions of both door shapes; `settle-probe` stubs
+`Element.prototype.animate` and reads the column's real `translateY` before and
+after every handover, requiring that an offset on its way out is always taken up
+by something — it catches the offset dropped inside one frame, after which the
+frames themselves look perfectly fine.
 
 The two live suites read the `?token=` URL out of the running app's log and drive
 the real chat frame. `live.mjs` catches a host that moved; `fold-live.mjs` opens a
@@ -327,7 +331,7 @@ back-to-end button still teleports.
 
 New here, not derived: `package.json`, `cordis.patch.yml`, `src/host.js`,
 `src/client.js`, `src/{motion,session,stylesheet,params}.js`, `build.mjs`,
-`icon.svg`, `locale/`, and all nine test harnesses plus the two live suites.
+`icon.svg`, `locale/`, and all ten test harnesses plus the two live suites.
 
 The upstream MIT notice is reproduced in full in [NOTICE.md](NOTICE.md).
 

@@ -108,9 +108,11 @@ try {
     return sheet === null ? null : { plugin: sheet.dataset.plugin, rules: sheet.sheet === null ? 0 : sheet.sheet.cssRules.length }
   })()`)
   check('the stylesheet is mounted and tagged', style?.plugin === 'dsh-stream-motion', style)
-  // Two follow rules plus one per fade step, all in the one sheet the package mounts.
+  // Three follow rules — the clip, the button placement, and the reduced-motion
+  // override that drops the button's transition — plus one per fade step, all in
+  // the one sheet the package mounts.
   check('the stylesheet carries the clip, the button placement and every fade step',
-    style?.rules === 10, style?.rules)
+    style?.rules === 11, style?.rules)
 
   check('the animation API is there', await evaluate(`typeof Element.prototype.animate === 'function'`) === true)
 

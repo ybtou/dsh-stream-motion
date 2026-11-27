@@ -15,6 +15,10 @@
   #column { display: flex; flex-direction: column; }
   .block { padding: 8px; border-bottom: 1px solid #ddd; }
   #composer { flex: none; height: 60px; background: #f6f6f6; }
+  /* The composer block: a dock slot above the card, stacked in one column, the
+     way the host stacks the timeline and the queue above it. */
+  #composerStack { display: flex; flex-direction: column; flex: none; }
+  #composerDock { flex: none; height: 36px; background: #e8e8e8; }
   #toBottomSlot { position: absolute; right: 16px; bottom: 80px; }
 </style>
 </head>
@@ -36,8 +40,13 @@
       <button type="button" id="toBottom">down</button>
     </div>
   </div>
-  <div id="composer" data-composer-card>
-    <div data-composer-seat>composer</div>
+  <div id="composerStack">
+    <!-- The host's own slot for full-width entries above the composer card: the
+         task timeline, the queue, the goal. Hidden unless a test shows it. -->
+    <div id="composerDock" hidden>timeline</div>
+    <div id="composer" data-composer-card>
+      <div data-composer-seat>composer</div>
+    </div>
   </div>
 </div>
 

@@ -41,7 +41,7 @@ re-check the DOM marks in the table under "How it works" against the host's
 `dsh-client-ui-chat` build, before widening the range.
 
 To install anyway on an unverified version, DSH takes an explicit exact-version
-exemption for `dsh-stream-motion@0.2.0` on that runtime — through the plugin
+exemption for `dsh-stream-motion@0.2.1` on that runtime — through the plugin
 manager, or `dsh plugin allow-version`. Treat what happens next as untested.
 
 ## Install
@@ -90,6 +90,27 @@ the box they are typing in — anchored on the right edge so the button's own wi
 never has to be known. Both numbers are measured per pass, because both edges
 move: the composer grows as a draft wraps, and the sidebars take width from the
 column.
+
+**The anchor is the whole composer block's top edge, not the card's own.** The
+host stacks full-width entries above the composer card in the same column — the
+task timeline, the queue, the goal — all registered on the
+`conversation.input.dock` slot, whose contract reads "full-width entries above
+the composer card". They are siblings of the card, each inside a
+`display: contents` wrapper, and that wrapper has no box of its own, so the
+card's `top` knows nothing about them. Measured on the real page: the card starts
+at 770, the timeline occupies 728–764, and a button placed off the card's top
+alone lands at 726–758 — pressed across almost the whole progress bar. The walk
+climbs from the card, collecting the top of every ancestor with a box of its own,
+and stops at the level that holds the conversation scroller: above that is the
+chat area, not the composer. The highest top it saw is the anchor.
+
+**The lift is travelled, not jumped.** A dock mounting or leaving moves that
+anchor by its whole height (36 px plus its gap for the timeline), and teleporting
+there and back reads as a fault. So `bottom` and `right` each carry a 180 ms
+transition (`TAIL_MOVE_MS`/`TAIL_MOVE_EASE`, `cubic-bezier(0.32, 0.72, 0, 1)`:
+off the mark at once, no overshoot), and a page that declares
+`prefers-reduced-motion: reduce` drops the transition entirely and lands on the
+new place at once.
 
 **The smoothed press.** Pressing that button is itself smoothed. The host's
 handler writes the end in a single frame, which teleports the reader; the press
@@ -235,6 +256,12 @@ the callback altogether" over one page and one container, recording callback tim
 and frame gaps together. A real stream is the wrong instrument for that
 comparison — two runs of one configuration can differ threefold in `peakRuns` —
 which is what this harness exists to replace.
+
+The phenomenon, the evidence, the criterion and the mistakes behind each change
+are kept in [devlog.md](devlog.md). It answers "why is this constant that number"
+and "what is this code guarding against", and is worth a read before changing any
+of it — the "mistakes" sections especially, including several cases of a probe
+that looked like it was measuring and was in fact measuring nothing.
 
 ## Limitations
 

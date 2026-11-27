@@ -4,6 +4,7 @@ import { easeValueAt } from './ease.js'
 import {
   CHAT_RUNNING_SELECTOR,
   COMPOSER_CARD_SELECTOR,
+  COMPOSER_CLIMB_DEPTH,
   CONVERSATION_SCROLL_SELECTOR,
   DISCLOSURE_HEADER_SELECTOR,
   DISCLOSURE_ROW_SELECTOR,
@@ -70,6 +71,43 @@ function conversationComposerCard(cards) {
 }
 
 /**
+ * The top of the whole composer block this frame: the card plus everything the
+ * host stacks above it in the same column.
+ *
+ * The task timeline, the queue dock and the goal dock are all registered on
+ * `conversation.input.dock`, whose own contract says "full-width entries above
+ * the composer card". They are siblings of the card inside a `display: contents`
+ * wrapper, and the wrapper has no box of its own — so the card's
+ * `getBoundingClientRect().top` says nothing about them. Measured on the real
+ * page with the timeline showing: the card starts at 770, the timeline occupies
+ * 728–764, and a button placed off the card's top lands at 726–758, inside the
+ * bar.
+ *
+ * The walk climbs until it reaches a box that holds the conversation scroller —
+ * that is the chat frame, whose top is the conversation's, not the composer's —
+ * and returns the highest box top it saw below it. Reading boxes only: no style
+ * is resolved, so this is cheap enough to run per pass.
+ */
+function composerBlockTop(card) {
+  const scroller = conversationScroller()
+  let top = card.getBoundingClientRect().top
+  let node = card
+  for (let depth = 0; depth < COMPOSER_CLIMB_DEPTH; depth += 1) {
+    const parent = node.parentElement
+    if (parent === null || parent === document.body || parent === document.documentElement) break
+    // The frame that holds the conversation also holds the composer: past it the
+    // boxes describe the chat area, and the answer would be the panel's top.
+    if (scroller !== null && parent.contains(scroller)) break
+    const box = parent.getBoundingClientRect()
+    // A `display: contents` wrapper reports an empty box at the origin; it has no
+    // top of its own to contribute.
+    if (box.height > 0 && box.top < top) top = box.top
+    node = parent
+  }
+  return top
+}
+
+/**
  * Where the host's back-to-end button stands this frame, as a read phase found
  * it: outside the composer's top-right corner.
  *
@@ -77,7 +115,8 @@ function conversationComposerCard(cards) {
  * conversation. That is a long way from where the reader is looking — the end of
  * the text sits right above the composer they are typing in — and the two
  * numbers are measured rather than assumed because both edges move: the composer
- * grows as a draft wraps, and the sidebars take width from the column.
+ * grows as a draft wraps, the sidebars take width from the column, and a dock
+ * above the composer pushes its top up.
  */
 function readTailPlacement(cards) {
   const button = findFollowTailButton()
@@ -85,12 +124,13 @@ function readTailPlacement(cards) {
   const card = conversationComposerCard(cards)
   if (card === null) return null
   const cardBox = card.getBoundingClientRect()
+  const blockTop = composerBlockTop(card)
   return {
     button,
     // Anchored on the right edge, not on a centre: the button's own width then
     // never has to be known, and a host that restyles it still lands flush.
     right: `${Math.round(window.innerWidth - cardBox.right)}px`,
-    bottom: `${Math.round(window.innerHeight - cardBox.top + FOLLOW_TAIL_AIR_PX)}px`,
+    bottom: `${Math.round(window.innerHeight - blockTop + FOLLOW_TAIL_AIR_PX)}px`,
   }
 }
 

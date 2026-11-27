@@ -110,6 +110,28 @@ export const TAIL_PRESS_MS_PER_ROOT_PX = 12
  * sidebars take width.
  */
 export const FOLLOW_TAIL_AIR_PX = 12
+/**
+ * How many ancestors the composer's block top is read through.
+ *
+ * The host stacks full-width entries above the composer card in the same
+ * column — the task timeline dock, the queue dock, the goal dock — and each sits
+ * in a `display: contents` wrapper, so the card's own parent chain passes
+ * through boxes with no height of their own. Measured on the real page the walk
+ * is four levels to the stack and two more to the scroller; eight leaves room for
+ * another wrapper without silently landing on the card again.
+ */
+export const COMPOSER_CLIMB_DEPTH = 8
+/**
+ * How long the button takes to reach a new place.
+ *
+ * The anchor moves when a dock above the composer mounts or leaves — the task
+ * timeline appearing shifts it by its own 36px plus its gap — and a button that
+ * teleports onto the bar and back reads as a glitch. Measured on the real page:
+ * without this the button's bottom edge lands inside the timeline's own band.
+ */
+export const TAIL_MOVE_MS = 180
+/** The button's curve: leaves at once, settles without overshoot. */
+export const TAIL_MOVE_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)'
 export const TAIL_RIGHT_VAR = '--dsh-stream-motion-tail-right'
 export const TAIL_BOTTOM_VAR = '--dsh-stream-motion-tail-bottom'
 

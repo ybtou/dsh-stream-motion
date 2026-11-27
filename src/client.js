@@ -13,6 +13,7 @@
  */
 
 import { FOLLOW_ATTR, PACKAGE_NAME, REVEAL_ATTR, STYLE_ID } from './params.js'
+import { TAIL_MOVE_EASE, TAIL_MOVE_MS } from './follow/params.js'
 import { mountStyle } from './stylesheet.js'
 import { createEngine } from './reveal/engine.js'
 import { stepRules } from './reveal/steps.js'
@@ -39,7 +40,13 @@ body[${FOLLOW_ATTR}] [data-step-process]:not([data-group-expanded-mode]) [data-s
    off: outside the composer's top-right corner, where the reader is looking,
    instead of centred in the column's right gutter. Its two numbers are written
    per pass (follow/follow.js) from the composer's own edges: the button is fixed
-   and the composer moves as a draft wraps and as the sidebars take width. */
+   and the composer moves as a draft wraps and as the sidebars take width.
+   The anchor is the top of the whole composer block, not of the card: a dock the
+   host stacks above it — the task timeline, the queue, the goal — moves that top
+   up, and a button anchored on the card alone lands inside the dock's band.
+   The bottom offset is animated so a dock mounting shifts the button rather than
+   teleporting it onto the bar and back; a page that asks for reduced motion gets
+   the new place at once. */
 body[${FOLLOW_ATTR}] [data-dsh-stream-motion-tail] {
   position: fixed !important;
   right: var(--dsh-stream-motion-tail-right) !important;
@@ -48,7 +55,13 @@ body[${FOLLOW_ATTR}] [data-dsh-stream-motion-tail] {
   top: auto !important;
   margin: 0 !important;
   transform: none !important;
+  transition: bottom ${TAIL_MOVE_MS}ms ${TAIL_MOVE_EASE}, right ${TAIL_MOVE_MS}ms ${TAIL_MOVE_EASE} !important;
   z-index: 8 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body[${FOLLOW_ATTR}] [data-dsh-stream-motion-tail] {
+    transition: none !important;
+  }
 }
 
 /* ---------- the reveal's step rules ---------- */

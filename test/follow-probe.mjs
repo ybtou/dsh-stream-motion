@@ -295,6 +295,46 @@ try {
     Math.abs(placement.gapRight - placement.cardRightGap) <= 1 && placement.gapAbove > 0 && placement.gapAbove < 40,
     { gapRight: placement.gapRight, cardRightGap: placement.cardRightGap, gapAbove: placement.gapAbove })
 
+  // ---------- a dock above the composer ----------
+  //
+  // The host stacks full-width entries above the composer card in the same
+  // column — the task timeline is one — and the button has to stand above them
+  // rather than inside them. Measured on the real page: anchored on the card
+  // alone, the button's band is 726–758 and the timeline's is 728–764, so the two
+  // overlap over almost the whole button.
+  const docked = await evaluate(`(async () => {
+    const root = document.getElementById('root')
+    const slot = document.getElementById('toBottomSlot')
+    const button = document.getElementById('toBottom')
+    const dock = document.getElementById('composerDock')
+    const card = document.getElementById('composer')
+    dock.hidden = false
+    root.removeAttribute('data-chat-following-tail')
+    slot.hidden = false
+    await window.__frame()
+    // The placement is animated: let the transition finish before measuring
+    // where the button actually stands.
+    await window.__sleep(400)
+    const box = button.getBoundingClientRect()
+    const dockBox = dock.getBoundingClientRect()
+    const cardBox = card.getBoundingClientRect()
+    return {
+      bottom: button.style.getPropertyValue('--dsh-stream-motion-tail-bottom'),
+      gapAboveDock: Math.round(dockBox.top - box.bottom),
+      overlapsDock: box.bottom > dockBox.top + 0.5,
+      aboveCard: box.bottom <= cardBox.top,
+      transition: getComputedStyle(button).transitionProperty,
+    }
+  })()`)
+  check('a dock above the composer lifts the button above it',
+    docked.gapAboveDock >= 0 && docked.overlapsDock === false, docked)
+  check('the lift is animated, not a jump', /bottom/.test(docked.transition ?? ''), docked.transition)
+  await evaluate(`(() => {
+    document.getElementById('composerDock').hidden = true
+    document.getElementById('toBottomSlot').hidden = true
+    document.getElementById('root').setAttribute('data-chat-following-tail', '')
+  })()`)
+
   // ---------- the process catch-up ----------
   //
   // A capped process body that falls more than the threshold behind is walked to

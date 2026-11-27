@@ -128,6 +128,8 @@ biggestCancels left = 220 / 217 / 210 / 160
 
 **六、`Animation.cancel` 被包装后 `animation.currentTime` 变 null**，要先读 `now` 再调原函数。
 
+**七、确认「页面到底在跑哪个构建」不能只看合并包。** 页面把 54 个插件打成一个 13163403 B 的 `/plugins/??…` 包，在里面搜标记会被别的插件污染：第一版数到 `settling` 出现 7 次、`cubic-bezier(0.33, 0, 0.2, 1)` 也在，于是误判成「跑的是 0.2.2」——其实那些字符串来自别的插件。**正确做法是按 `id: "dsh-stream-motion"` 切出本插件那一段再数**（实测该段 1515075 B、`settling` 3 次）。另外**不带 `?token=` 打开 `127.0.0.1:3080` 根本没有会话，插件包一次都不会被请求**，必须先像 `test/live.mjs` 那样从 `C:\Users\alzc\AppData\Roaming\dsh-tauri\logs\desktop\dsh-web.log` 里读带 token 的 URL。
+
 ---
 
 ## 0.2.1 — 时间线遮挡

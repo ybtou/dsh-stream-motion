@@ -203,6 +203,69 @@ try {
     /^translateY\(-\d+(\.\d+)?px\)$/.test(counter.frames?.[0] ?? '') && counter.frames?.[1] === 'translateY(0px)',
     counter.frames)
 
+  // ---------- a growth with no streaming mark ----------
+  //
+  // The gate used to require `[data-streaming]` or `[data-shimmer]`, on the
+  // reasoning that the host keeps its own follow through the structural moments
+  // around a stream. Measured on a real reply that is false: a tool call row
+  // mounts as `data-chat-flow-kind="turn-process"` and the summary as
+  // `turn-tail`, and neither carries either mark. The host pinned the row's
+  // height anyway, so the pin painted as a jump — 1672 px of growth with
+  // `streaming` false and no slide made.
+  //
+  // What the slide needs is a growth the host pinned while the reader watches the
+  // end, not a mark saying tokens are arriving. This plants a block that carries
+  // no mark at all, pins the end the way the host does, and requires a slide.
+  const unmarked = await evaluate(`(async () => {
+    const scroll = document.getElementById('scroll')
+    const column = document.getElementById('column')
+    // Nothing on the page is streaming: the marks are what the old gate read.
+    // They are put back at the end — the suites below grow that same answer.
+    const stripped = [...column.querySelectorAll('[data-streaming], [data-shimmer]')]
+    for (const mark of stripped) {
+      mark.removeAttribute('data-streaming')
+      mark.removeAttribute('data-shimmer')
+    }
+    scroll.scrollTop = scroll.scrollHeight
+    await window.__frame()
+    await window.__sleep(320)
+    // A tool call row: a plain block, no streaming mark, mounted at the end.
+    const row = document.createElement('div')
+    row.setAttribute('data-chat-flow-kind', 'turn-process')
+    row.style.cssText = 'display:block;height:24px;overflow:hidden'
+    column.appendChild(row)
+    await window.__frame()
+    await window.__sleep(320)
+    const before = column.getAnimations().length
+    const scrollBefore = scroll.scrollTop
+    row.style.height = '180px'
+    scroll.scrollTop = scroll.scrollHeight
+    await window.__frame()
+    const animations = column.getAnimations()
+    const keys = animations[0]?.effect.getKeyframes().map((k) => k.transform)
+    const scrolledBy = scroll.scrollTop - scrollBefore
+    await window.__sleep(320)
+    const result = {
+      before,
+      marksOnPage: column.querySelectorAll('[data-streaming], [data-shimmer]').length,
+      count: animations.length,
+      keys,
+      scrolledBy,
+      restTransform: getComputedStyle(column).transform,
+    }
+    row.remove()
+    for (const mark of stripped) mark.setAttribute('data-streaming', '')
+    scroll.scrollTop = scroll.scrollHeight
+    await window.__frame()
+    return result
+  })()`)
+  check('a growth with no streaming mark still slides', unmarked.count === 1,
+    { count: unmarked.count, marksOnPage: unmarked.marksOnPage })
+  check('that slide starts from the pin it cancels',
+    unmarked.keys?.[0] === `translateY(${unmarked.scrolledBy}px)`,
+    { keys: unmarked.keys, scrolledBy: unmarked.scrolledBy })
+  check('that slide rests with no transform left', unmarked.restTransform === 'none', unmarked.restTransform)
+
   // ---------- the reader's hold ----------
   //
   // A wheel inside the scroller takes the hold: the slide stands down, and the

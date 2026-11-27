@@ -11,10 +11,82 @@
 
 | 版本 | 日期 | 提交 | 主题 |
 | --- | --- | --- | --- |
+| 0.2.3 | 2026-11-27 | 未提交 | 闸门问错了问题：工具调用与总结开头不滑动 |
 | 0.2.2 | 2026-11-27 | `6aee5e6` | 抽搐：settle 从来没有真正建起来过 |
 | 0.2.1 | 2026-11-27 | `2c3e28c` | 时间线遮挡：按钮锚到整个输入区，而不是卡片自己 |
 | 0.2.0 | 2026-11-27 | `5ff02bc` | 滑移被提前结束时缓动收尾；颜色读取移出 mutation 回调 |
 | 0.1.0 | 2026-11-26 | `fdbfd05` | 首次发布：逐字淡入、滑移跟随、行高卷动 |
+
+---
+
+## 0.2.3 — 闸门问错了问题
+
+**提交**：未提交。版本号 `package.json:3` = `0.2.3`。
+
+### 现象
+
+用户报两个症状：**一次进行多个工具调用时会直接跳动，没有平滑滚动**；**模型进行首次总结输出前几十个字符时还会跳动**。
+
+### 证据
+
+**一、`streaming()` 在整段回复里几乎永远是 false。** 闸门（`src/follow/follow.js`）要求 `[data-streaming]` 或 `[data-shimmer]` 落在列的最后三个子元素里。真实回复逐帧记下来（`MutationObserver` 只在状态变化时记一条）：
+
+| 时刻 | 事件 | 文本长度 | shimmer | running | tail | 闸门 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7118 | 第一个 child | 15 | — | — | true | **true** |
+| 7319 | child+text | **8821** | — | — | true | true |
+| 16146 | child+text | 79 | 0 | 0 | true | **false** |
+| 18969 | child+data-shimmer | 177 | 1 | 1 | true | true |
+| 18998 | child+text+data-shimmer | **969** | **0** | **0** | true | **false** |
+
+最后两行是关键：**29 毫秒内 `[data-shimmer]` 消失，而文本从 177 涨到 969（+792 字符）**。那 792 个字符是在闸门关着的同一批 mutation 里画出来的 —— 宿主的 pin 照常发生，`slideWanted` 拒绝滑动，整块一帧落地。这就是「首次总结输出前几十个字符时跳动」。
+
+**二、闸门开着、pin 着，也一次都没滑。** 另一段回复的逐次增长记录（`ResizeObserver` 挂在列上，与插件同款）：
+
+```
+grewPx 1672  pinnedPx    0  streaming false  tail true
+grewPx  659  pinnedPx   ??  streaming true   tail true
+grewPx  237  pinnedPx    0  streaming false  tail true
+grewPx   58  pinnedPx   ??  streaming true   tail true
+```
+
+`makes: 0` —— 这段回复里滑动一次都没启动。而同一份工装在另一段回复里记到 `makes: 4`（`translateY(823px)` 两次，配 `-823px` 反向 counter），说明滑动本身是好的，**差别只在回复形状**：带工具调用的回复里，`[data-streaming]` 从不出现。
+
+**三、工具调用行与总结块都不带这两个标记。** 宿主 bundle（`dsh-client-ui-chat/lib/client.js`）里工具调用行是 `data-chat-flow-kind="turn-process"`，总结块是 `turn-tail`；`data-chat-running` 只出现在一个 `.running` 元素上（`"data-chat-running": true`，带 `data-holding`）。**两个标记都不在这两种行上。**
+
+### 改动
+
+`src/follow/follow.js` 的 `slideWanted` 去掉 `if (!streaming()) return false`，并删掉因此不再被引用的 `streaming()`、`runningMarks`、`FOLLOW_RUNNING_SELECTOR` 与 `STREAMING_SELECTOR`/`SHIMMER_SELECTOR` 导入（`src/reveal/engine.js` 用自己的那份，不受影响）。
+
+留下的是真正能区分「这次增长该不该滑」的条件：`motionReduced()`、`submissionHeld()`、`readerAway()`、`foldBusy()`、以及宿主 `data-chat-following-tail` 仍在。**而「宿主确实 pin 了、读者没有自己滚动」这两条，`consumePin` 在调用 `slideWanted` 之前就已经确认过了**（它只在 `pinned > 0` 且 `readerMoved` 为假时才走到这里）。
+
+### 验证
+
+**新增断言（`test/follow-probe.mjs`，从 29 条增到 32 条）**：种一个不带任何标记的块（`data-chat-flow-kind="turn-process"`，24px），把页面上所有 `[data-streaming]`/`[data-shimmer]` 摘掉，按宿主的方式 pin，然后长到 180px：
+
+```
+PASS  a growth with no streaming mark still slides  {"count":1,"marksOnPage":0}
+PASS  that slide starts from the pin it cancels  {"keys":["translateY(180px)","translateY(0px)"],"scrolledBy":180}
+PASS  that slide rests with no transform left  "none"
+```
+
+**这条断言有区分力**：`git stash push -- src/` 回到 0.2.2 的闸门再跑，同样的用例报 `FAIL ... {"count":0,"marksOnPage":0}` —— `count: 0` 就是那次真实的跳动。
+
+**十个探针全绿**：reveal 19/19、follow 32/32、tail-press 6/6、jitter 4/4、race 2/2、burst 4/4、collapse 6/6、open 6/6、group 8/8、settle 4/4。`live.mjs` 13/13 + 2 skipped、`fold-live.mjs` 12/12。构建 `lib/client.js` 42424 B（0.2.2 是 43662 B）。
+
+**页面在跑这个构建**：按 `id: "dsh-stream-motion"` 从合并包里切出本插件那段，`1513837` B；与 0.2.2 的 `1515075` B 相差 `1238`，与本地构建 `43662 → 42424` 的 `1238` **完全一致**。
+
+### 踩到的坑
+
+**一、短回复根本不走 `[data-streaming]`。** 前三个探针都记到 `{"seconds":0,"samples":0}`，因为它们的「开始记录」条件是 `[data-streaming]` 出现。发一句「请写三句话说明什么是样式重算」实测：30 秒内 `streaming` 全程为 0，只有 `shimmer`/`running` 前 2 秒为 2/1，文本从 123 直接跳到 910。**探针的启动条件必须改成「列长高了」，不能是「有标记」。** 改完之后同一段回复立刻有数据。
+
+**二、判据又一次只看「有没有动画」。** `gate-probe` 的 `animate` 打桩最初只记 `this === column()`，报 `makes: 0`；改成记所有元素（`on: 'column' | 'running' | 'other'`）之后仍然是 0 —— 那次回复确实没有滑动，但前一次报 0 时我差点把它当成「插件没生效」。**先确认插件在页面里（`body[data-dsh-stream-motion]`、`#dsh-stream-motion-style`、`data-dsh-stream-motion-reveal` 都在），再解释 `makes: 0`。**
+
+**三、跳过「高度变化」的帧把要测的帧也跳掉了。** 判据原本写 `if (before.h !== after.h) continue`（为了躲开塌陷时浏览器钳制 `scrollTop` 的假位移），结果 **1074px 的增长被报成 `visualMoves: 0`**。改成只跳 `after.h < before.h`（收缩）之后，同一段回复读出 `visualMoves: 3`。
+
+**四、注入脚本的注释里不能出现反引号。** 又一次把模板字符串提前终止，报 `ReferenceError: data is not defined`。这条已经记在 0.2.2 的坑里，**同一个错犯了第二次**。
+
+**五、`pinnedGrowths: 0` 不等于没 bug。** 有几次回复的内容高度没超过视口（`colH` 最大 576，视口 900），没有滚动条，宿主也就没有 pin，本来就不该滑动。**判据必须先看 `yRange` 有没有变过，再谈滑没滑。**
 
 ---
 

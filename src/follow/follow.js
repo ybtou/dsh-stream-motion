@@ -1,4 +1,4 @@
-import { observeMarker, observeMatches, observeSize, subscribeMutations } from '../bus.js'
+import { observeMatches, observeSize, subscribeMutations } from '../bus.js'
 import { requestFrame } from '../frame.js'
 import { easeValueAt } from './ease.js'
 import {
@@ -18,13 +18,11 @@ import {
   READER_HOLD_ATTR,
   ROW_PHASE_ATTRIBUTE,
   RUNNING_STATE,
-  SHIMMER_SELECTOR,
   SLIDE_BURST_MAX_MS,
   SLIDE_BURST_MS_PER_ROOT_PX,
   SLIDE_MS,
   SLIDE_SETTLE_EASE,
   SLIDE_SETTLE_MS,
-  STREAMING_SELECTOR,
   TAIL_ATTR,
   TAIL_BOTTOM_VAR,
   TAIL_RIGHT_VAR,
@@ -51,9 +49,6 @@ import { createProcessFollow } from './process-follow.js'
  * itself and every position write are the scroll owner's; the catch-up inside a
  * capped body is in process-follow.js.
  */
-
-/** Content is streaming: the host writes both marks, and only then is there a follow to lose. */
-export const FOLLOW_RUNNING_SELECTOR = `${STREAMING_SELECTOR}, ${SHIMMER_SELECTOR}`
 
 /** The conversation's own composer card: the lowest of the cards on the page. */
 function conversationComposerCard(cards) {
@@ -206,30 +201,26 @@ export function createFollowGuard(options) {
   const thinkRows = observeMatches(THINK_ROW_SELECTOR)
 
   /**
-   * Whether content is arriving right now. It rides the newest block — the
-   * answer the flow is writing — so the query starts from the end of the column;
-   * a mark standing anywhere else is read off the bus's registry, which hears
-   * the attribute arrive, so the transcript is never walked for it.
-   */
-  const runningMarks = observeMarker(FOLLOW_RUNNING_SELECTOR)
-  const streaming = () => {
-    const column = conversationColumn()
-    if (column === null) return false
-    let block = column.lastElementChild
-    for (let at = 0; at < 3 && block !== null; at += 1, block = block.previousElementSibling) {
-      // The mark can sit on the block itself (a host that marks the row) or on a
-      // descendant (one that marks the answer inside it): both are this block
-      // streaming.
-      if (block.matches(FOLLOW_RUNNING_SELECTOR) || block.querySelector(FOLLOW_RUNNING_SELECTOR) !== null) return true
-    }
-    return runningMarks.all().some((mark) => column.contains(mark))
-  }
-
-  /**
-   * Whether this growth is slid. The gate is the streaming mark itself: the host
-   * keeps its own follow through the structural moments around a stream — a tool
-   * call row arriving, a thinking row ending, a new flow block — so those need no
-   * hand-back and no wider "work in progress" window (D95).
+   * Whether this growth is slid.
+   *
+   * The gate used to be the streaming mark itself, on the reasoning that the host
+   * keeps its own follow through the structural moments around a stream, so those
+   * need no slide (D95). Measured on a real reply, that reasoning does not hold:
+   * the marks it looks for (`[data-streaming]`, `[data-shimmer]`) exist only while
+   * tokens are being written. A tool call row mounts as
+   * `data-chat-flow-kind="turn-process"` and the summary as `turn-tail`, and
+   * neither carries either mark — so on the frames the host pinned a tool row's
+   * height, or the first few hundred characters of the summary arrived in one
+   * batch, the gate was shut and the pin painted as a jump. Measured: 1672 px of
+   * growth pinned with `streaming` false and no slide made, and separately 792
+   * characters landing 29 ms after `[data-shimmer]` left.
+   *
+   * What actually distinguishes a growth worth sliding is that the host pinned it
+   * while the reader watches the end — which `consumePin` has already established
+   * by the time this runs (it only calls here with a positive pin, and only when
+   * the reader's own scroll revision has not moved). The rest of the gate stays:
+   * a reader who left, a fold in flight, reduced motion, and the reader's own
+   * message taking its place are all still refused.
    */
   const slideWanted = (column) => {
     if (motionReduced()) return false
@@ -237,7 +228,6 @@ export function createFollowGuard(options) {
     // stands, and an entrance measured against the row's own box would be moved
     // by a slide's offset.
     if (submissionHeld()) return false
-    if (!streaming()) return false
     if (readerAway()) return false
     if (foldBusy()) return false
     // The host's own mark that it follows the end, an attribute read: without it
@@ -709,7 +699,6 @@ export function createFollowGuard(options) {
     releaseHold()
     runningRows.release()
     thinkRows.release()
-    runningMarks.release()
     slideColumn = null
     leaveOwner()
   }

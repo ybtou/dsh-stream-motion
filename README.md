@@ -33,7 +33,7 @@
 构建重新核一遍，再去动范围。
 
 非要在未验证版本上装，DSH 提供针对具体运行时的精确版本豁免 ——
-`dsh-stream-motion@0.2.2`，通过插件管理器或 `dsh plugin allow-version`。之后发生什么按未测处理。
+`dsh-stream-motion@0.2.3`，通过插件管理器或 `dsh plugin allow-version`。之后发生什么按未测处理。
 
 ## 安装
 
@@ -102,7 +102,7 @@ npm run build        # src/ -> lib/client.js + lib/host.js
 
 | 标记 | 宿主写在哪 | 这里当作 |
 | --- | --- | --- |
-| `data-streaming`、`data-shimmer` | 回答容器 / 思考摘要 | 内容正在到达 |
+| `data-streaming`、`data-shimmer` | 回答容器 / 思考摘要 | 逐字淡入的作用域（滑移不读它，见下） |
 | `data-chat-following-tail` | 聊天根节点 | 宿主自己的跟随是开着的 |
 | `data-chat-flow` | 流列元素 | 被滑移的那个盒子 |
 | `data-conversation-scroll` | 对话滚动容器 | 位置的所有者 |
@@ -110,6 +110,13 @@ npm run build        # src/ -> lib/client.js + lib/host.js
 | `data-step-process-body` | 被限高的工具组主体 | 要追赶的盒子 |
 | `data-disclosure-row`、`aria-expanded`、`aria-controls` | 折叠控制与它开的主体 | 一扇门 |
 | `data-conversation-session`、`data-phase` | 对话体与根节点 | 屏幕上哪个会话 |
+
+**滑移的判据是「宿主这次确实把内容往上推了」，不是「有字正在流」。** `data-streaming` 与
+`data-shimmer` 只在模型逐字吐字时存在；工具调用行挂的是 `data-chat-flow-kind="turn-process"`，
+总结块是 `turn-tail`，两者都不带这两个标记。0.2.2 之前用它们当闸门，于是工具调用与总结开头
+那两段增长被宿主 pin 了、却不滑动 —— 一帧落地，看起来就是跳。现在闸门只问三件事：读者没有
+自己滚走、没有正在跑的折叠、宿主仍标着 `data-chat-following-tail`；而「这次增长被 pin 了」
+由 `consumePin` 在调用它之前就已经确认过。
 
 淡入骑在 `::highlight()` 上：这个伪元素的属性集里没有 `opacity`，所以 alpha 花在颜色上，
 每个台阶一条规则，各自把元素自己发布的颜色与 `transparent` 混合。规则的主语是文字所挂的
@@ -172,7 +179,9 @@ node test/fold-live.mjs             # 真实对话里的真实折叠
 的文字；`collapse-probe`、`open-probe`、`group-probe` 覆盖两种门形状的两个方向；
 `settle-probe` 给 `Element.prototype.animate` 打桩，记下每次动画交接前后列上真实的
 `translateY`，要求「有位移要交出去的时候必须有人接」—— 它抓的是位移在一帧里被丢掉，
-而丢掉之后帧本身看起来完全正常。
+而丢掉之后帧本身看起来完全正常。`follow-probe` 里还有一条同类的：种一个不带任何标记的块，
+把页面上所有 `data-streaming`/`data-shimmer` 摘掉，按宿主的方式 pin 之后再让它长高，
+要求仍然有滑移 —— 它抓的是闸门读错了判据（0.2.3 修的就是这个，旧闸门下这条报 `count: 0`）。
 
 两个 live 套件从运行中应用的日志里读 `?token=` 的 URL，驱动真实的聊天框。`live.mjs` 抓「宿主
 挪了位置」这一类形状变化；`fold-live.mjs` 打开一个真实会话，点真实的门，确认卷动真的发生在

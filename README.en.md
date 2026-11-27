@@ -41,7 +41,7 @@ re-check the DOM marks in the table under "How it works" against the host's
 `dsh-client-ui-chat` build, before widening the range.
 
 To install anyway on an unverified version, DSH takes an explicit exact-version
-exemption for `dsh-stream-motion@0.2.2` on that runtime — through the plugin
+exemption for `dsh-stream-motion@0.2.3` on that runtime — through the plugin
 manager, or `dsh plugin allow-version`. Treat what happens next as untested.
 
 ## Install
@@ -143,7 +143,7 @@ writes, and this package marks nothing inside the chat tree:
 
 | Mark | Written by the host on | Read here as |
 | --- | --- | --- |
-| `data-streaming`, `data-shimmer` | the answer container / the thinking summary | content is arriving |
+| `data-streaming`, `data-shimmer` | the answer container / the thinking summary | the scope the per-character fade runs in (the slide does not read it, see below) |
 | `data-chat-following-tail` | the chat root | the host's own follow is on |
 | `data-chat-flow` | the flow column | the box whose growth is slid |
 | `data-conversation-scroll` | the conversation scroller | the position's owner |
@@ -151,6 +151,17 @@ writes, and this package marks nothing inside the chat tree:
 | `data-step-process-body` | a capped tool group's body | the box to catch up |
 | `data-disclosure-row`, `aria-expanded`, `aria-controls` | a fold control and the body it opens | a door |
 | `data-conversation-session`, `data-phase` | the conversation body and root | which session is on screen |
+
+**The slide is gated on "the host actually pushed the content up this frame", not
+on "tokens are arriving".** `data-streaming` and `data-shimmer` exist only while
+the model is writing character by character; a tool call row mounts as
+`data-chat-flow-kind="turn-process"` and the summary as `turn-tail`, and neither
+carries either mark. Up to 0.2.2 they were the gate, so the growth of a tool row
+and of the summary's opening — both pinned by the host — was never slid: one
+frame, and it reads as a jump. The gate now asks three things only: the reader
+has not scrolled away, no fold is in flight, and the host still marks
+`data-chat-following-tail`. That this growth was pinned is established by
+`consumePin` before it ever calls the gate.
 
 The fade rides on `::highlight()`: the pseudo-element's property set has no
 `opacity`, so alpha is spent on the colour instead, one rule per step, each
@@ -245,7 +256,11 @@ more than a screenful in one commit; `collapse-probe`, `open-probe` and
 `Element.prototype.animate` and reads the column's real `translateY` before and
 after every handover, requiring that an offset on its way out is always taken up
 by something — it catches the offset dropped inside one frame, after which the
-frames themselves look perfectly fine.
+frames themselves look perfectly fine. `follow-probe` carries the same kind of
+check for the gate: it plants a block with no mark at all, strips every
+`data-streaming`/`data-shimmer` off the page, pins the end the way the host does,
+and requires a slide anyway — it catches a gate that reads the wrong signal
+(0.2.3 fixed exactly this; under the old gate that check reported `count: 0`).
 
 The two live suites read the `?token=` URL out of the running app's log and drive
 the real chat frame. `live.mjs` catches a host that moved; `fold-live.mjs` opens a
